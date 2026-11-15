@@ -164,6 +164,84 @@ class RecentFilesTest {
         assertEquals(List.of(two.resolve("B.java")), RecentFiles.forFolder(two).list());
     }
 
+    // ---- remembering the folder a file belongs to ---------------------------------------------
+
+    @Test
+    void remembersTheFolderEachFileWasUsedInAcrossRestarts() throws IOException {
+        Path one = Files.createDirectories(dir.resolve("one")), two = Files.createDirectories(dir.resolve("two"));
+        Path a = file("one/src/A.java"), b = file("two/B.java"), loose = file("loose/C.java");
+        RecentFiles recent = new RecentFiles(store, null);
+        recent.touch(a, one);
+        recent.touch(b, two);
+        recent.touch(loose, null);
+
+        RecentFiles reopened = new RecentFiles(store, null);
+        assertEquals(List.of(loose, b, a), reopened.list());
+        assertEquals(one, reopened.folderOf(a));
+        assertEquals(two, reopened.folderOf(b));
+        assertEquals(dir.resolve("loose"), reopened.folderOf(loose), "no folder recorded: the file's own folder");
+    }
+
+    @Test
+    void theLatestFolderWinsWhenAFileIsUsedFromAnother() throws IOException {
+        Path outer = Files.createDirectories(dir.resolve("outer")), inner = Files.createDirectories(dir.resolve("outer/inner"));
+        Path a = file("outer/inner/A.java");
+        RecentFiles recent = new RecentFiles(store, null);
+        recent.touch(a, outer);
+        recent.touch(a, inner);
+        assertEquals(inner, new RecentFiles(store, null).folderOf(a));
+        assertEquals(1, recent.list().size());
+    }
+
+    @Test
+    void aRecordedFolderThatIsGoneOrNoLongerContainsTheFileIsNotTrusted() throws IOException {
+        Path a = file("project/src/A.java");
+        RecentFiles recent = new RecentFiles(store, null);
+        recent.touch(a, dir.resolve("deleted-project"));
+        assertEquals(dir.resolve("project/src"), recent.folderOf(a));
+    }
+
+    @Test
+    void foldersOfEntriesThatDropOffTheListAreForgotten() throws IOException {
+        RecentFiles recent = new RecentFiles(store, null);
+        Path first = file("p/First.java");
+        recent.touch(first, dir.resolve("p"));
+        for (int i = 0; i < RecentFiles.LIMIT; i++) {
+            recent.touch(file("p/F" + i + ".java"), dir.resolve("p"));
+        }
+        assertFalse(Files.readString(store).contains("First.java"));
+        assertEquals(RecentFiles.LIMIT, Files.readAllLines(store).size());
+    }
+
+    @Test
+    void guessesTheProjectFolderFromMarkersOnDisk() throws IOException {
+        Path inGit = file("repo/src/deep/A.java");
+        Files.createDirectories(dir.resolve("repo/.git"));
+        assertEquals(dir.resolve("repo"), RecentFiles.guessProjectFolder(inGit));
+
+        Path inMaven = file("build/app/src/main/java/p/B.java");
+        file("build/pom.xml");
+        file("build/app/pom.xml");
+        assertEquals(dir.resolve("build"), RecentFiles.guessProjectFolder(inMaven), "the outermost pom, not the module");
+
+        Path usedBefore = file("repo/tools/sub/C.java");
+        Files.createDirectories(dir.resolve("repo/tools/.jeditor"));
+        assertEquals(dir.resolve("repo/tools"), RecentFiles.guessProjectFolder(usedBefore),
+                "a folder the editor was used in beats the repository root");
+
+        Path plain = file("plain/D.java");
+        assertEquals(dir.resolve("plain"), RecentFiles.guessProjectFolder(plain));
+    }
+
+    @Test
+    void mergedListPutsTheFolderFirstWithoutDuplicatesUpToTheLimit() {
+        Path a = Path.of("/a"), b = Path.of("/b"), c = Path.of("/c"), d = Path.of("/d");
+        assertEquals(List.of(a, b, c, d), RecentFiles.merged(List.of(a, b), List.of(c, b, d, a), 10));
+        assertEquals(List.of(a, b, c), RecentFiles.merged(List.of(a, b), List.of(c, d), 3));
+        assertEquals(List.of(a), RecentFiles.merged(List.of(a, b), List.of(c), 1));
+        assertEquals(List.of(), RecentFiles.merged(List.of(), List.of(), 10));
+    }
+
     @Test
     void locationIsRelativeToTheOpenFolder() {
         Path folder = dir.resolve("project");

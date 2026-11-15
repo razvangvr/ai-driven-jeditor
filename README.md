@@ -27,7 +27,7 @@ middle, and live compile-error checking as you type.
   (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
   Enter opens the selected one. Each folder remembers its own list, in `.jeditor/recent-files.txt`
-  inside the folder.
+  inside the folder. Picking a file from another project opens that project's folder with it.
 - **Navigation** — Ctrl+click a type name (or Ctrl+B at the caret) to open the type's source in
   a new tab. Works for methods, fields and variables too.
 - **Build** — *Build → Build Project* (Ctrl+F9, or the Build button) compiles all sources into the

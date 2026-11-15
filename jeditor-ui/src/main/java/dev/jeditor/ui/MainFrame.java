@@ -106,8 +106,10 @@ final class MainFrame extends JFrame {
             KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), this::buildProject);
     private boolean updatingRuntimeChooser;
 
-    /** The open folder's own list (stored inside that folder), or the per-user one while no folder is open. */
-    private RecentFiles recentFiles = RecentFiles.forCurrentUser();
+    /** Recent files across all folders, with the folder each was used in (stored in the user's home). */
+    private final RecentFiles allRecentFiles = RecentFiles.forCurrentUser();
+    /** Recent files of the open folder (stored inside that folder); null while no folder is open. */
+    private RecentFiles folderRecentFiles;
     /** True while tabs are being closed in bulk, when tab selection changes are not the user's doing. */
     private boolean closingAllTabs;
 
@@ -129,7 +131,7 @@ final class MainFrame extends JFrame {
             refreshViews();
             withCurrentTab(EditorTab::focusEditor);
             if (!closingAllTabs) {
-                withCurrentTab(tab -> recentFiles.touch(tab.file()));
+                withCurrentTab(tab -> touchRecent(tab.file()));
             }
         });
 
@@ -334,7 +336,7 @@ final class MainFrame extends JFrame {
 
     void openFolder(Path newFolder) {
         folder = newFolder.toAbsolutePath().normalize();
-        recentFiles = RecentFiles.forFolder(folder);
+        folderRecentFiles = RecentFiles.forFolder(folder);
         fileTree.setRoot(newFolder);
         setTitle("JEditor — " + newFolder);
         closeFolderAction.setEnabled(true);
@@ -350,7 +352,7 @@ final class MainFrame extends JFrame {
         }
         runner.stop();
         folder = null;
-        recentFiles = RecentFiles.forCurrentUser();
+        folderRecentFiles = null;
         fileTree.clear();
         setTitle("JEditor");
         closeFolderAction.setEnabled(false);
@@ -818,11 +820,41 @@ final class MainFrame extends JFrame {
         }
     }
 
-    /** Shows the most recently used files; choosing one opens it (or switches to its tab). */
+    private void touchRecent(Path file) {
+        allRecentFiles.touch(file, folder);
+        if (folderRecentFiles != null && file.startsWith(folder)) {
+            folderRecentFiles.touch(file);
+        }
+    }
+
+    /**
+     * Shows the most recently used files: those of the open folder first, then files of other
+     * folders. Choosing one opens it, together with its folder if that is not the one open.
+     */
     private void showRecentFiles() {
         EditorTab current = currentTab();
-        new RecentFilesDialog(this, recentFiles.list(), current == null ? null : current.file(), folder, this::openFile)
+        List<Path> files = folderRecentFiles == null
+                ? allRecentFiles.list()
+                : RecentFiles.merged(folderRecentFiles.list(), allRecentFiles.list(), RecentFiles.LIMIT);
+        new RecentFilesDialog(this, files, current == null ? null : current.file(), folder, this::openRecent)
                 .setVisible(true);
+    }
+
+    /** Opens a recent file; if it belongs to another folder than the one open, that folder is opened first. */
+    private void openRecent(Path file) {
+        if (folder == null || !file.startsWith(folder)) {
+            Path target = allRecentFiles.folderOf(file);
+            if (target != null && !target.equals(folder)) {
+                if (!closeAllTabs()) {
+                    return; // the user cancelled on an unsaved file: stay where we are
+                }
+                runner.stop();
+                openFolder(target);
+            }
+        }
+        if (openFile(file) != null) {
+            fileTree.reveal(file);
+        }
     }
 
     private void exit() {
