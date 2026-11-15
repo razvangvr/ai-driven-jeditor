@@ -78,6 +78,7 @@ final class MainFrame extends JFrame {
     private final JComboBox<JavaRuntime> runtimeChooser = new JComboBox<>();
     private final Action runAction = action("Run Main Class", KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK), this::runCurrentFile);
     private final Action stopAction = action("Stop", KeyStroke.getKeyStroke(KeyEvent.VK_F2, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), runner::stop);
+    private final Action closeFolderAction = action("Close Folder", null, this::closeFolder);
     private boolean updatingRuntimeChooser;
 
     private Path folder;
@@ -140,6 +141,7 @@ final class MainFrame extends JFrame {
         }
         refreshRuntimeChooser();
         refreshRunActions();
+        closeFolderAction.setEnabled(false);
     }
 
     // ---- running ------------------------------------------------------------------------------
@@ -237,6 +239,22 @@ final class MainFrame extends JFrame {
         folder = newFolder;
         fileTree.setRoot(newFolder);
         setTitle("JEditor — " + newFolder);
+        closeFolderAction.setEnabled(true);
+    }
+
+    /**
+     * Closes the current folder: its open files (asking about unsaved changes), any running
+     * program, and the file tree. Does nothing if the user cancels on an unsaved file.
+     */
+    private void closeFolder() {
+        if (!closeAllTabs()) {
+            return;
+        }
+        runner.stop();
+        folder = null;
+        fileTree.clear();
+        setTitle("JEditor");
+        closeFolderAction.setEnabled(false);
     }
 
     void openFile(Path file) {
@@ -272,6 +290,7 @@ final class MainFrame extends JFrame {
         file.setMnemonic('F');
         file.add(action("Open Folder…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey | InputEvent.SHIFT_DOWN_MASK), this::chooseFolder));
         file.add(action("Open File…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey), this::chooseFile));
+        file.add(closeFolderAction);
         file.addSeparator();
         file.add(action("Save", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey), () -> withCurrentTab(this::save)));
         file.add(action("Save All", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey | InputEvent.SHIFT_DOWN_MASK), this::saveAll));
@@ -364,11 +383,19 @@ final class MainFrame extends JFrame {
         return true;
     }
 
-    private void exit() {
+    /** Closes every tab; stops and returns false as soon as the user cancels one. */
+    private boolean closeAllTabs() {
         while (tabs.getTabCount() > 0) {
             if (!close(tabAt(tabs.getTabCount() - 1))) {
-                return;
+                return false;
             }
+        }
+        return true;
+    }
+
+    private void exit() {
+        if (!closeAllTabs()) {
+            return;
         }
         runner.stop();
         compilerThread.shutdownNow();

@@ -80,6 +80,11 @@ final class FileTreePanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
     }
 
+    /** Empties the tree (no folder open). */
+    void clear() {
+        tree.setModel(new DefaultTreeModel(null));
+    }
+
     void setRoot(Path folder) {
         FileNode root = new FileNode(folder);
         root.loadChildren();

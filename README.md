@@ -8,6 +8,7 @@ middle, and live compile-error checking as you type.
 ## Features
 
 - **File viewer** — tree of the opened folder; double-click (or Enter) opens a file in a tab.
+  *File → Open Folder…* switches project, *File → Close Folder* closes it along with its tabs.
 - **Editor** — Java syntax colouring, line numbers, bracket matching, mark-occurrences,
   auto-indent, undo/redo, tabs with unsaved-changes marker.
 - **Compile errors** — every Java file is compiled when opened and again ~0.4 s after each edit
