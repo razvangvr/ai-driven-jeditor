@@ -22,7 +22,7 @@
 
 ```
 jeditor-compiler   no UI, no third-party dependencies
-  dev.jeditor.compiler       analyse a source file: errors + structure
+  dev.jeditor.compiler       analyse a source file: errors, structure, go-to-declaration
   dev.jeditor.compiler.run   Java runtimes, build to class files, launch
 jeditor-ui         the Swing application
 ```
@@ -69,6 +69,20 @@ per-line lexer, the second a full compile.
 A consequence: colouring is purely lexical (keywords, strings, comments, numbers, annotations).
 It does not know whether an identifier is a field, a local variable or a type.
 
+## Going to a declaration (Ctrl+click)
+
+1. While Ctrl is held, RSyntaxTextArea asks for each token under the mouse whether it is a
+   link. `EditorTab` answers yes for any identifier-like token — a cheap check, no compiling.
+2. On click, `JavaSourceAnalyzer.findDeclaration(file, text, offset)` runs `javac`'s parse and
+   analyze phases on the editor text, as for error checking.
+3. `DeclarationFinder` finds the AST node of the name under the offset and asks `javac` which
+   symbol it resolved that name to, and where that symbol's own declaration tree is. Because the
+   compiler does the resolving, imports, inheritance and overloads are handled correctly; there
+   is no name-matching heuristic.
+4. The result is a file and an offset; `MainFrame` opens the file in a tab and moves the caret
+   there. Symbols that exist only as class files (JDK, jars) have no file, and the status bar
+   says so.
+
 ## Running a main class
 
 ```
@@ -97,4 +111,7 @@ Run ▶ ─▶ save ─▶ ProgramBuilder (javac, --release N) ─▶ temp dir o
 - Live error checking always uses the editor's own `javac` at Java 21 level, whichever runtime
   is selected; version mismatches show up when you press Run.
 - Maven dependencies are not resolved; see the README for the `target/dependency` workaround.
+- Go-to-declaration cannot open JDK or library classes (no source is read for them).
 - Run takes no program arguments and runs the first main class found in the current file.
+
+The requirements behind all this are in [specs/](specs/README.md).

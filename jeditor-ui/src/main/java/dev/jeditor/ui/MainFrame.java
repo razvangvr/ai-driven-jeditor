@@ -2,6 +2,7 @@ package dev.jeditor.ui;
 
 import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CodeBlock;
+import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
 import dev.jeditor.compiler.run.JavaRuntime;
 import dev.jeditor.compiler.run.RuntimeRegistry;
@@ -44,6 +45,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -257,28 +259,48 @@ final class MainFrame extends JFrame {
         closeFolderAction.setEnabled(false);
     }
 
-    void openFile(Path file) {
+    /** Opens the file in a tab, or selects its tab if already open. Returns null if it could not be opened. */
+    EditorTab openFile(Path file) {
         Path normalized = file.toAbsolutePath().normalize();
         for (int i = 0; i < tabs.getTabCount(); i++) {
             if (tabAt(i).file().equals(normalized)) {
                 tabs.setSelectedIndex(i);
-                return;
+                return tabAt(i);
             }
         }
         try {
             if (Files.size(normalized) > MAX_FILE_BYTES) {
                 error("File is too large to open (over 5 MB):\n" + normalized);
-                return;
+                return null;
             }
-            EditorTab tab = new EditorTab(normalized, analyzer, compilerThread);
+            EditorTab tab = new EditorTab(normalized, analyzer, compilerThread, this::navigateTo);
             tab.addChangeListener(() -> tabChanged(tab));
             tabs.addTab(null, null, tab, normalized.toString());
             int index = tabs.indexOfComponent(tab);
             tabs.setTabComponentAt(index, new TabHeader(tab));
             tabs.setSelectedIndex(index);
             tab.focusEditor();
+            return tab;
         } catch (IOException e) {
             error("Cannot open " + normalized + "\n" + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Outcome of a "go to declaration" request: open the declaring file at the declared name. */
+    private void navigateTo(Optional<DeclarationTarget> declaration) {
+        if (declaration.isEmpty()) {
+            statusLeft.setText("Nothing to navigate to here.");
+            return;
+        }
+        DeclarationTarget target = declaration.get();
+        if (!target.hasSource()) {
+            statusLeft.setText("No source available for " + target.name() + " (it comes from a library or the JDK).");
+            return;
+        }
+        EditorTab tab = openFile(target.file().get());
+        if (tab != null) {
+            tab.goTo(target.offset());
         }
     }
 
@@ -304,6 +326,11 @@ final class MainFrame extends JFrame {
         file.addSeparator();
         file.add(action("Exit", null, this::exit));
 
+        JMenu navigate = new JMenu("Navigate");
+        navigate.setMnemonic('N');
+        navigate.add(action("Go to Declaration", KeyStroke.getKeyStroke(KeyEvent.VK_B, menuKey),
+                () -> withCurrentTab(EditorTab::goToDeclarationAtCaret)));
+
         JMenu run = new JMenu("Run");
         run.setMnemonic('R');
         run.add(runAction);
@@ -313,6 +340,7 @@ final class MainFrame extends JFrame {
 
         JMenuBar bar = new JMenuBar();
         bar.add(file);
+        bar.add(navigate);
         bar.add(run);
         return bar;
     }

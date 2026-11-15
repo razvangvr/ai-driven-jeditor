@@ -17,9 +17,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Checks Java source for compile errors and extracts its structure, using the JDK's own compiler
@@ -117,6 +119,46 @@ public final class JavaSourceAnalyzer {
         diagnostics.sort(Comparator.comparingInt(CompilationDiagnostic::startOffset)
                 .thenComparing(CompilationDiagnostic::severity));
         return new AnalysisResult(diagnostics, structure, mainClasses);
+    }
+
+    // ---- go to declaration -------------------------------------------------------------------
+
+    /** Like {@link #findDeclaration(Path, String, int, ProjectLayout)}, detecting the project layout from disk. */
+    public Optional<DeclarationTarget> findDeclaration(Path file, String source, int offset) {
+        return findDeclaration(file, source, offset, ProjectLayout.detect(file, source));
+    }
+
+    /**
+     * Resolves the name at {@code offset} (a type, method, field or variable reference) to the place
+     * it is declared, the way an IDE's "go to declaration" does. The compiler does the resolving, so
+     * imports, inheritance, overloads and shadowing are all honoured.
+     *
+     * @return empty if there is no resolvable name at the offset; otherwise the declaration, whose
+     *         {@link DeclarationTarget#file() file} is empty when it lives in compiled code only
+     */
+    public Optional<DeclarationTarget> findDeclaration(Path file, String source, int offset, ProjectLayout layout) {
+        Objects.requireNonNull(file, "file");
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(layout, "layout");
+        if (compiler == null || offset < 0 || offset > source.length()) {
+            return Optional.empty();
+        }
+        DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+        InMemorySource unit = new InMemorySource(file, source);
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(collector, Locale.ENGLISH, StandardCharsets.UTF_8)) {
+            files.setLocationFromPaths(StandardLocation.SOURCE_PATH, layout.sourceRoots());
+            files.setLocationFromPaths(StandardLocation.CLASS_PATH, layout.classpath());
+            JavacTask task = (JavacTask) compiler.getTask(null, files, collector, OPTIONS, null, List.of(unit));
+            Iterator<? extends CompilationUnitTree> parsed = task.parse().iterator();
+            if (!parsed.hasNext()) {
+                return Optional.empty();
+            }
+            CompilationUnitTree tree = parsed.next();
+            task.analyze(); // attribution is what links each name to the symbol it refers to
+            return new DeclarationFinder(Trees.instance(task)).find(tree, offset);
+        } catch (RuntimeException | IOException e) {
+            return Optional.empty(); // code too broken to resolve anything
+        }
     }
 
     private static CompilationDiagnostic convert(Diagnostic<? extends JavaFileObject> diagnostic, String source) {

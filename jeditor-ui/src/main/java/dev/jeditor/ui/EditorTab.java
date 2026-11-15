@@ -2,11 +2,15 @@ package dev.jeditor.ui;
 
 import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CompilationDiagnostic;
+import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
 import org.fife.ui.rsyntaxtextarea.ErrorStrip;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rsyntaxtextarea.Theme;
+import org.fife.ui.rsyntaxtextarea.Token;
+import org.fife.ui.rsyntaxtextarea.TokenTypes;
+import org.fife.ui.rsyntaxtextarea.LinkGeneratorResult;
 import org.fife.ui.rtextarea.ExpandedFoldRenderStrategy;
 import org.fife.ui.rtextarea.FoldIndicatorStyle;
 import org.fife.ui.rtextarea.Gutter;
@@ -18,6 +22,7 @@ import javax.swing.Timer;
 import javax.swing.ToolTipManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.text.BadLocationException;
 import java.awt.BorderLayout;
 import java.io.BufferedReader;
@@ -33,6 +38,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -49,6 +56,7 @@ final class EditorTab extends JPanel {
     private final Path file;
     private final JavaSourceAnalyzer analyzer;
     private final ExecutorService executor;
+    private final Consumer<Optional<DeclarationTarget>> navigator;
 
     private final RSyntaxTextArea textArea = new RSyntaxTextArea();
     private final RTextScrollPane scrollPane = new RTextScrollPane(textArea);
@@ -62,11 +70,17 @@ final class EditorTab extends JPanel {
     private long generation;
     private AnalysisResult result = AnalysisResult.EMPTY;
 
-    EditorTab(Path file, JavaSourceAnalyzer analyzer, ExecutorService executor) throws IOException {
+    /**
+     * @param navigator receives, on the event thread, the outcome of each "go to declaration"
+     *                  request: the declaration found, or empty if the spot refers to nothing
+     */
+    EditorTab(Path file, JavaSourceAnalyzer analyzer, ExecutorService executor,
+              Consumer<Optional<DeclarationTarget>> navigator) throws IOException {
         super(new BorderLayout());
         this.file = file;
         this.analyzer = analyzer;
         this.executor = executor;
+        this.navigator = navigator;
 
         load();
         configureEditor();
@@ -77,6 +91,7 @@ final class EditorTab extends JPanel {
             add(errorStrip, BorderLayout.LINE_END);
             textArea.addParser(parser);
             ToolTipManager.sharedInstance().registerComponent(textArea);
+            installDeclarationLinks();
             analysisTimer.setRepeats(false);
             analysisPending = analyzer.isAvailable();
             runAnalysis();
@@ -170,6 +185,31 @@ final class EditorTab extends JPanel {
         });
     }
 
+    /**
+     * Resolves the name at {@code offset} to its declaration, off the event thread, and reports
+     * the outcome to the navigator. Uses the current editor text, saved or not.
+     */
+    void goToDeclarationAt(int offset) {
+        if (!isJava() || !analyzer.isAvailable()) {
+            return;
+        }
+        String text = textArea.getText();
+        executor.submit(() -> {
+            Optional<DeclarationTarget> target;
+            try {
+                target = analyzer.findDeclaration(file, text, offset);
+            } catch (RuntimeException e) {
+                target = Optional.empty();
+            }
+            Optional<DeclarationTarget> found = target;
+            SwingUtilities.invokeLater(() -> navigator.accept(found));
+        });
+    }
+
+    void goToDeclarationAtCaret() {
+        goToDeclarationAt(textArea.getCaretPosition());
+    }
+
     void focusEditor() {
         textArea.requestFocusInWindow();
     }
@@ -223,6 +263,40 @@ final class EditorTab extends JPanel {
         // Classic [-]/[+] markers, always visible, so it is obvious where each block starts and ends.
         gutter.setFoldIndicatorStyle(FoldIndicatorStyle.CLASSIC);
         gutter.setExpandedFoldRenderStrategy(ExpandedFoldRenderStrategy.ALWAYS);
+    }
+
+    /**
+     * Ctrl+click (Cmd+click on macOS) on a name jumps to its declaration. While the modifier is
+     * held, the text area asks whether the token under the mouse is a link; deciding that must be
+     * instant, so every identifier-like token qualifies and the compiler is consulted only on click.
+     */
+    private void installDeclarationLinks() {
+        textArea.setHyperlinksEnabled(true);
+        textArea.setLinkGenerator((area, offset) -> {
+            Token token = area.modelToToken(offset);
+            if (token == null || !isNameToken(token.getType())) {
+                return null;
+            }
+            return new LinkGeneratorResult() {
+                @Override
+                public HyperlinkEvent execute() {
+                    goToDeclarationAt(offset);
+                    return null; // handled here; no hyperlink event to dispatch
+                }
+
+                @Override
+                public int getSourceOffset() {
+                    return offset;
+                }
+            };
+        });
+    }
+
+    private static boolean isNameToken(int type) {
+        // The highlighter classifies well-known JDK class names (String, List, ...) as
+        // "data type"/"function"/"reserved word 2" rather than plain identifiers.
+        return type == TokenTypes.IDENTIFIER || type == TokenTypes.FUNCTION || type == TokenTypes.DATA_TYPE
+                || type == TokenTypes.RESERVED_WORD_2 || type == TokenTypes.ANNOTATION;
     }
 
     private void edited() {

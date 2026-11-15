@@ -21,6 +21,8 @@ middle, and live compile-error checking as you type.
   ends; the **Structure** panel outlines types and members (click to navigate); the status bar shows
   the block the caret is in and the lines it spans.
 
+- **Navigation** — Ctrl+click a type name (or Ctrl+B at the caret) to open the type's source in
+  a new tab. Works for methods, fields and variables too.
 - **Run** — the ▶ button (Shift+F10) compiles the current file and runs its `main` method on the
   Java runtime chosen in the toolbar; output appears in the **Console** tab, which also accepts
   input. Add any installed JRE or JDK (Java 8+) under *Run → Java Runtimes…*.
@@ -28,6 +30,7 @@ middle, and live compile-error checking as you type.
 ![Running a main class](docs/screenshot-run.png)
 
 **How it all works, in a few pages: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).**
+Requirements: [docs/specs/](docs/specs/README.md).
 
 ## Build and run
 
