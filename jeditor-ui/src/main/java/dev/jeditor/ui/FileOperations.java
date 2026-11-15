@@ -117,10 +117,17 @@ final class FileOperations {
 
     /** Deletes a file, or a folder with everything in it: to the trash where the system has one, permanently otherwise. */
     static void delete(Path target) throws IOException {
-        if (deletesToTrash() && Desktop.getDesktop().moveToTrash(target.toFile())) {
-            return;
+        try {
+            if (deletesToTrash() && Desktop.getDesktop().moveToTrash(target.toFile()) && !Files.exists(target)) {
+                return;
+            }
+        } catch (RuntimeException e) {
+            // the system refused to trash it (permissions, unsupported location): fall through
         }
         deletePermanently(target);
+        if (Files.exists(target)) {
+            throw new IOException("'" + target.getFileName() + "' is still there; it may be in use or protected.");
+        }
     }
 
     static void deletePermanently(Path target) throws IOException {

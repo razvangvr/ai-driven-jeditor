@@ -419,6 +419,9 @@ final class MainFrame extends JFrame {
         file.add(newFileAction);
         file.add(newFolderAction);
         file.addSeparator();
+        file.add(action("Rename Selected\u2026", null, () -> withSelectedInFileViewer(this::rename)));
+        file.add(action("Delete Selected", null, () -> withSelectedInFileViewer(this::delete)));
+        file.addSeparator();
         file.add(action("Open Folder…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey | InputEvent.SHIFT_DOWN_MASK), this::chooseFolder));
         file.add(action("Open File…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey), this::chooseFile));
         file.add(action("Recent Files\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_E, menuKey), this::showRecentFiles));
@@ -711,6 +714,10 @@ final class MainFrame extends JFrame {
     }
 
     private void rename(Path target) {
+        if (target.equals(folder)) {
+            error("The opened folder itself cannot be renamed from inside the editor.");
+            return;
+        }
         String current = target.getFileName().toString();
         String name = current;
         while ((name = (String) JOptionPane.showInputDialog(this, "New name for '" + current + "':", "Rename",
@@ -725,6 +732,16 @@ final class MainFrame extends JFrame {
                 fileTree.refresh();
                 return;
             }
+        }
+    }
+
+    /** Applies a file-viewer command from the menu bar to the file or folder selected in the file viewer. */
+    private void withSelectedInFileViewer(Consumer<Path> command) {
+        Path selected = fileTree.selectedPath();
+        if (selected == null) {
+            error("Select a file or folder in the file viewer first.");
+        } else {
+            command.accept(selected);
         }
     }
 
@@ -793,12 +810,21 @@ final class MainFrame extends JFrame {
         }
     }
 
+    /**
+     * Deletes whatever is selected in the file viewer: a file, or a folder with all its
+     * subfolders and files, however deep. Asks first.
+     */
     private void delete(Path target) {
         boolean directory = Files.isDirectory(target);
-        String what = (directory ? "the folder '" : "'") + target.getFileName() + "'" + (directory ? " and everything in it" : "");
-        String question = FileOperations.deletesToTrash()
+        boolean openedFolder = target.equals(folder);
+        String name = "'" + target.getFileName() + "'";
+        String what = openedFolder ? "the opened folder " + name + " and everything in it"
+                : directory ? "the folder " + name + " and everything in it"
+                : name;
+        String question = (FileOperations.deletesToTrash()
                 ? "Move " + what + " to the trash?"
-                : "Permanently delete " + what + "?\nThis cannot be undone.";
+                : "Permanently delete " + what + "?\nThis cannot be undone.")
+                + deletionSummary(target);
         if (JOptionPane.showConfirmDialog(this, question, "Delete", JOptionPane.OK_CANCEL_OPTION,
                 JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) {
             return;
@@ -810,10 +836,37 @@ final class MainFrame extends JFrame {
         try {
             FileOperations.delete(target);
         } catch (IOException e) {
-            error("Cannot delete '" + target.getFileName() + "':\n" + e.getMessage());
+            error("Cannot delete " + name + ":\n" + e.getMessage());
+        }
+        if (openedFolder && !Files.exists(target)) {
+            closeFolder(); // nothing left to show
+            return;
         }
         fileTree.refresh();
         refreshViews();
+    }
+
+    /** For a folder, how much is about to go: "\n\nContains 12 files in 4 folders." Empty for a file. */
+    private static String deletionSummary(Path target) {
+        if (!Files.isDirectory(target)) {
+            return "";
+        }
+        try (java.util.stream.Stream<Path> paths = Files.walk(target)) {
+            long[] counts = new long[2];
+            paths.filter(path -> !path.equals(target)).forEach(path -> counts[Files.isDirectory(path) ? 1 : 0]++);
+            return "\n\n" + describeContents(counts[0], counts[1]);
+        } catch (IOException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    static String describeContents(long files, long folders) {
+        if (files == 0 && folders == 0) {
+            return "The folder is empty.";
+        }
+        String fileText = files + (files == 1 ? " file" : " files");
+        String folderText = folders + (folders == 1 ? " subfolder" : " subfolders");
+        return "Contains " + (folders == 0 ? fileText : files == 0 ? folderText : fileText + " in " + folderText) + ".";
     }
 
     private List<EditorTab> tabsUnder(Path fileOrDirectory) {

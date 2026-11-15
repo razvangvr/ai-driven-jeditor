@@ -5,6 +5,7 @@
 | ID | Requirement | Status |
 | --- | --- | --- |
 | BASIC-1 | A "new file" button exists, so that a new Java class can be created (for example in a newly opened, empty folder). | Done |
+| BASIC-3 | Any node selected in the file viewer can be deleted, including a folder that contains several levels of packages. | Done |
 | BASIC-2 | No other basic, common-sense functionality of a basic editor is missing. | Partial — the review below added the essentials; what is still absent is listed under *Not covered* |
 
 ## Behaviour
@@ -26,7 +27,7 @@
 | Function | How |
 | --- | --- |
 | Rename a file or folder | Right-click → *Rename…*, or F2 in the file viewer. Open tabs follow the rename. |
-| Delete a file or folder | Right-click → *Delete*, or Delete in the file viewer; asks first. Goes to the system trash where there is one, otherwise it is permanent and the question says so. |
+| Delete a file or folder (BASIC-3) | Select it, then right-click → *Delete*, press Delete or Backspace (also with Cmd/Ctrl), or use *File → Delete Selected*. A folder goes with all its subfolders and files, however deep. Asks first, saying how many files and subfolders are inside. Goes to the system trash where there is one, otherwise it is permanent and the question says so. |
 | Find in the current file | *Edit → Find…* (Ctrl/Cmd+F): all matches highlighted, Enter / Shift+Enter for next / previous, wraps around, match-case and whole-word options, Esc closes. |
 | Replace | *Edit → Replace…* (Ctrl/Cmd+R): Replace and Replace All. |
 | Go to line | *Navigate → Go to Line…* (Ctrl/Cmd+G), `line` or `line:column`. |
@@ -42,6 +43,9 @@
 - Renaming a file does **not** rename the class inside it or update references to it (that
   would be a refactoring). The compiler then reports the mismatch.
 - Deleting closes the affected tabs without asking to save them.
+- The opened folder itself (the top node) can be deleted too; the editor then closes it.
+- A click anywhere on a row of the file viewer selects it, not only a click on the name, so that
+  a right-click beside a name acts on that row.
 
 ## Not covered
 

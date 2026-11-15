@@ -167,6 +167,21 @@ class FileOperationsTest {
     }
 
     @Test
+    void deletesADeepMultiPackageTreeIncludingHiddenAndEmptyFolders() throws IOException {
+        FileOperations.createFile(dir, "com/acme/app/Main.java", "x");
+        FileOperations.createFile(dir, "com/acme/app/ui/View.java", "x");
+        FileOperations.createFile(dir, "com/acme/util/text/Strings.java", "x");
+        FileOperations.createFile(dir, "com/acme/.hidden/secret", "x");
+        FileOperations.createFolder(dir, "com/acme/empty/also-empty");
+        FileOperations.createFile(dir, "org/Keep.java", "x");
+
+        FileOperations.delete(dir.resolve("com"));
+
+        assertFalse(Files.exists(dir.resolve("com")));
+        assertTrue(Files.exists(dir.resolve("org/Keep.java")), "siblings are untouched");
+    }
+
+    @Test
     void openFilesFollowARenamedFileOrFolder() {
         Path oldFolder = dir.resolve("src/old");
         Path newFolder = dir.resolve("src/new");

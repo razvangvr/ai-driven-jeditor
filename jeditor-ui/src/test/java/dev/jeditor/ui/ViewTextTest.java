@@ -69,6 +69,15 @@ class ViewTextTest {
     }
 
     @Test
+    void deleteConfirmationSaysHowMuchAFolderContains() {
+        assertEquals("The folder is empty.", MainFrame.describeContents(0, 0));
+        assertEquals("Contains 1 file.", MainFrame.describeContents(1, 0));
+        assertEquals("Contains 3 subfolders.", MainFrame.describeContents(0, 3));
+        assertEquals("Contains 12 files in 4 subfolders.", MainFrame.describeContents(12, 4));
+        assertEquals("Contains 2 files in 1 subfolder.", MainFrame.describeContents(2, 1));
+    }
+
+    @Test
     void syntaxStyleFollowsFileExtension() {
         assertEquals(SyntaxConstants.SYNTAX_STYLE_JAVA, EditorTab.styleFor(Path.of("src/Main.java")));
         assertEquals(SyntaxConstants.SYNTAX_STYLE_XML, EditorTab.styleFor(Path.of("POM.XML")));

@@ -20,6 +20,7 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Rectangle;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
@@ -106,6 +107,9 @@ final class FileTreePanel extends JPanel {
 
             @Override
             public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && tree.getPathForLocation(e.getX(), e.getY()) == null) {
+                    selectRowAt(e); // clicking beside a name selects its row too, not only clicking on it
+                }
                 maybeShowMenu(e);
             }
 
@@ -114,12 +118,17 @@ final class FileTreePanel extends JPanel {
                 maybeShowMenu(e); // the popup trigger is press on some platforms, release on others
             }
         });
-        tree.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "delete-file");
+        // "Delete" on a Mac keyboard is Backspace; accept both, with or without the menu modifier (Cmd+Delete).
+        int menuKey = java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        for (int key : new int[] {KeyEvent.VK_DELETE, KeyEvent.VK_BACK_SPACE}) {
+            tree.getInputMap().put(KeyStroke.getKeyStroke(key, 0), "delete-file");
+            tree.getInputMap().put(KeyStroke.getKeyStroke(key, menuKey), "delete-file");
+        }
         tree.getActionMap().put("delete-file", new javax.swing.AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 Path selected = selectedPath();
-                if (selected != null && !selected.equals(root)) {
+                if (selected != null) {
                     actions.delete(selected);
                 }
             }
@@ -342,8 +351,7 @@ final class FileTreePanel extends JPanel {
         if (!e.isPopupTrigger() || root == null) {
             return;
         }
-        TreePath under = tree.getPathForLocation(e.getX(), e.getY());
-        tree.setSelectionPath(under); // right-click acts on what is under the mouse; null clears the selection
+        selectRowAt(e); // right-click acts on the row under the mouse; elsewhere, on what is already selected
         Path selected = selectedPath();
         Path directory = targetDirectory();
 
@@ -351,14 +359,28 @@ final class FileTreePanel extends JPanel {
         menu.add(item("New Java Class\u2026", () -> actions.newJavaClass(directory)));
         menu.add(item("New File\u2026", () -> actions.newFile(directory)));
         menu.add(item("New Folder\u2026", () -> actions.newFolder(directory)));
-        if (selected != null && !selected.equals(root)) {
+        if (selected != null) {
             menu.addSeparator();
-            menu.add(item("Rename\u2026", () -> actions.rename(selected)));
+            if (!selected.equals(root)) {
+                menu.add(item("Rename\u2026", () -> actions.rename(selected)));
+            }
             menu.add(item("Delete", () -> actions.delete(selected)));
         }
         menu.addSeparator();
         menu.add(item("Refresh", this::refresh));
         menu.show(tree, e.getX(), e.getY());
+    }
+
+    /**
+     * Selects the row at the mouse's height, wherever on that row the click lands: the name, the
+     * icon, or the empty space to the right of it. A click below the last row changes nothing.
+     */
+    private void selectRowAt(MouseEvent e) {
+        int row = tree.getClosestRowForLocation(e.getX(), e.getY());
+        Rectangle bounds = row < 0 ? null : tree.getRowBounds(row);
+        if (bounds != null && e.getY() >= bounds.y && e.getY() < bounds.y + bounds.height) {
+            tree.setSelectionRow(row);
+        }
     }
 
     private static JMenuItem item(String text, Runnable action) {
