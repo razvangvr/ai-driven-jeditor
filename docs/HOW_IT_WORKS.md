@@ -83,6 +83,20 @@ It does not know whether an identifier is a field, a local variable or a type.
    there. Symbols that exist only as class files (JDK, jars) have no file, and the status bar
    says so.
 
+## Building (compiling to an output directory)
+
+*Build Project* and *Compile Current File* produce class files you keep, unlike live error
+checking (which writes nothing) and Run (which uses a throw-away directory).
+
+1. `BuildPlanner` decides what to compile and where the output goes:
+   - Maven project: each module's `src/main/java` → its `target/classes` (a single test file →
+     `target/test-classes`);
+   - plain folder: every `.java` file in it → `<folder>/out`.
+2. `ProgramBuilder` runs `javac` with that output directory, targeting the Java version of the
+   runtime selected in the toolbar.
+3. `RunController` does this in the background and reports to the **Console**: the errors with
+   file and line, or "Build successful".
+
 ## Running a main class
 
 ```

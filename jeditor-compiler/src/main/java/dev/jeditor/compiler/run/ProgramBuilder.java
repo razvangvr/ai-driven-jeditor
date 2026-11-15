@@ -56,14 +56,35 @@ public final class ProgramBuilder {
      * @param targetRelease Java release the classes must run on, e.g. 17
      */
     public BuildResult build(Path file, ProjectLayout layout, Path outputDir, int targetRelease) {
+        return build(List.of(file), layout, outputDir, targetRelease, false);
+    }
+
+    /** Compiles a planned build target; see {@link BuildPlanner}. */
+    public BuildResult build(BuildPlanner.BuildTarget target, int targetRelease) {
+        return build(target.sources(), target.layout(), target.outputDir(), targetRelease, target.wholeUnit());
+    }
+
+    /**
+     * Compiles {@code sources} as saved on disk.
+     *
+     * @param onlyGivenSources if true, classes found through the source path are used for checking
+     *                         but no class files are written for them; if false they are compiled too
+     */
+    public BuildResult build(List<Path> sources, ProjectLayout layout, Path outputDir, int targetRelease,
+                             boolean onlyGivenSources) {
         if (compiler == null) {
             return failure("No Java compiler available: start JEditor with a JDK, not a JRE.");
         }
         int compilerRelease = Runtime.version().feature();
-        List<String> options = new ArrayList<>(List.of("-proc:none", "-nowarn", "-encoding", "UTF-8"));
+        List<String> options = new ArrayList<>(List.of("-proc:none", "-nowarn", "-encoding", "UTF-8",
+                // Report syntax, type and flow errors in one go, as the editor's Problems view does.
+                "-XDshould-stop.ifError=FLOW"));
         if (targetRelease < OLDEST_TARGET) {
             return failure("Cannot compile for Java " + targetRelease + ": the oldest supported runtime is Java "
                     + OLDEST_TARGET + ".");
+        }
+        if (onlyGivenSources) {
+            options.add("-implicit:none");
         }
         if (targetRelease < compilerRelease) {
             // Restricts both language level and API to what the chosen runtime really has.
@@ -77,7 +98,7 @@ public final class ProgramBuilder {
             files.setLocationFromPaths(StandardLocation.SOURCE_PATH, layout.sourceRoots());
             files.setLocationFromPaths(StandardLocation.CLASS_PATH, layout.classpath());
             files.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(outputDir));
-            success = compiler.getTask(null, files, collector, options, null, files.getJavaFileObjects(file)).call();
+            success = compiler.getTask(null, files, collector, options, null, files.getJavaFileObjectsFromPaths(sources)).call();
         } catch (IOException | RuntimeException e) {
             return failure("Compilation failed: " + e);
         }

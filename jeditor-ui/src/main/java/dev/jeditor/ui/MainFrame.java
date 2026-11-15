@@ -99,6 +99,11 @@ final class MainFrame extends JFrame {
             KeyStroke.getKeyStroke(KeyEvent.VK_S, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
             () -> withCurrentTab(this::save));
     private final Action closeFolderAction = action("Close Folder", null, this::closeFolder);
+    private final Action compileFileAction = action("Compile Current File",
+            KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK),
+            this::compileCurrentFile);
+    private final Action buildProjectAction = action("Build Project",
+            KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), this::buildProject);
     private boolean updatingRuntimeChooser;
 
     /** The open folder's own list (stored inside that folder), or the per-user one while no folder is open. */
@@ -223,6 +228,11 @@ final class MainFrame extends JFrame {
         bar.add(Box.createHorizontalGlue());
         bar.add(runtimeChooser);
         bar.addSeparator(new Dimension(6, 0));
+        buildProjectAction.putValue(Action.SHORT_DESCRIPTION, "Compile all sources of the folder into its output directory");
+        JButton buildButton = new JButton(buildProjectAction);
+        buildButton.setText("Build");
+        buildButton.setFocusable(false);
+        bar.add(buildButton);
         bar.add(new JButton(runAction)).setFocusable(false);
         bar.add(new JButton(stopAction)).setFocusable(false);
         bar.addSeparator(new Dimension(6, 0));
@@ -242,8 +252,58 @@ final class MainFrame extends JFrame {
     }
 
     private void refreshRunActions() {
-        runAction.setEnabled(!runner.isBusy());
-        stopAction.setEnabled(runner.isBusy());
+        boolean busy = runner.isBusy();
+        runAction.setEnabled(!busy);
+        compileFileAction.setEnabled(!busy);
+        buildProjectAction.setEnabled(!busy);
+        stopAction.setEnabled(busy);
+        if (!busy && buildRunning) {
+            buildRunning = false;
+            fileTree.refresh(); // show the freshly written output directory
+        }
+    }
+
+    /** True while the job in progress is a build, whose output the file viewer should pick up when it ends. */
+    private boolean buildRunning;
+
+    /** Saves everything, like any IDE before compiling: what is built is what is on disk. False if a save failed. */
+    private boolean saveAllForBuild() {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            if (tabAt(i).isDirty() && !save(tabAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Builds target the selected runtime's Java version, so the classes run on it; else the editor's own. */
+    private int buildRelease() {
+        return runtimes.selected().map(JavaRuntime::featureVersion).orElse(Runtime.version().feature());
+    }
+
+    private void compileCurrentFile() {
+        EditorTab tab = currentTab();
+        if (tab == null || !tab.isJava()) {
+            error("Open the Java file you want to compile.");
+            return;
+        }
+        if (saveAllForBuild()) {
+            bottomTabs.setSelectedComponent(console);
+            buildRunning = true;
+            runner.compileFile(tab.file(), folder, buildRelease());
+        }
+    }
+
+    private void buildProject() {
+        if (folder == null) {
+            error("Open a folder first (File \u2192 Open Folder\u2026).");
+            return;
+        }
+        if (saveAllForBuild()) {
+            bottomTabs.setSelectedComponent(console);
+            buildRunning = true;
+            runner.buildProject(folder, buildRelease());
+        }
     }
 
     private void manageRuntimes() {
@@ -263,11 +323,8 @@ final class MainFrame extends JFrame {
                 return;
             }
         }
-        // Like any IDE: what runs is what is on disk, so save first.
-        for (int i = 0; i < tabs.getTabCount(); i++) {
-            if (tabAt(i).isDirty() && !save(tabAt(i))) {
-                return;
-            }
+        if (!saveAllForBuild()) {
+            return;
         }
         bottomTabs.setSelectedComponent(console);
         runner.run(tab.file(), folder != null ? folder : tab.file().getParent(), runtimes.selected().get());
@@ -386,6 +443,11 @@ final class MainFrame extends JFrame {
         navigate.add(action("Go to Declaration", KeyStroke.getKeyStroke(KeyEvent.VK_B, menuKey),
                 () -> withCurrentTab(EditorTab::goToDeclarationAtCaret)));
 
+        JMenu build = new JMenu("Build");
+        build.setMnemonic('B');
+        build.add(compileFileAction);
+        build.add(buildProjectAction);
+
         JMenu run = new JMenu("Run");
         run.setMnemonic('R');
         run.add(runAction);
@@ -397,6 +459,7 @@ final class MainFrame extends JFrame {
         bar.add(file);
         bar.add(edit);
         bar.add(navigate);
+        bar.add(build);
         bar.add(run);
         return bar;
     }
