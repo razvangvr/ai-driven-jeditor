@@ -60,6 +60,7 @@ final class EditorTab extends JPanel {
 
     private final RSyntaxTextArea textArea = new RSyntaxTextArea();
     private final RTextScrollPane scrollPane = new RTextScrollPane(textArea);
+    private final FindBar findBar = new FindBar(textArea);
     private final DiagnosticsParser parser = new DiagnosticsParser();
     private final Timer analysisTimer = new Timer(ANALYSIS_DELAY_MS, e -> runAnalysis());
     private final List<Runnable> listeners = new ArrayList<>();
@@ -86,6 +87,7 @@ final class EditorTab extends JPanel {
         configureEditor();
 
         add(scrollPane, BorderLayout.CENTER);
+        add(findBar, BorderLayout.SOUTH);
         if (isJava()) {
             ErrorStrip errorStrip = new ErrorStrip(textArea);
             add(errorStrip, BorderLayout.LINE_END);
@@ -208,6 +210,53 @@ final class EditorTab extends JPanel {
 
     void goToDeclarationAtCaret() {
         goToDeclarationAt(textArea.getCaretPosition());
+    }
+
+    // ---- editing commands (Edit menu) ---------------------------------------------------------
+
+    void undo() {
+        textArea.undoLastAction();
+    }
+
+    void redo() {
+        textArea.redoLastAction();
+    }
+
+    void cut() {
+        textArea.cut();
+    }
+
+    void copy() {
+        textArea.copy();
+    }
+
+    void paste() {
+        textArea.paste();
+    }
+
+    void selectAll() {
+        textArea.selectAll();
+    }
+
+    void showFind(boolean withReplace) {
+        findBar.open(withReplace);
+    }
+
+    int lineCount() {
+        return textArea.getLineCount();
+    }
+
+    /** Moves the caret to a 1-based line (and optional 1-based column), clamped to the document. */
+    void goToLine(int line, int column) {
+        try {
+            int index = Math.max(0, Math.min(line, textArea.getLineCount()) - 1);
+            int start = textArea.getLineStartOffset(index);
+            int end = textArea.getLineEndOffset(index);
+            int lastColumn = index == textArea.getLineCount() - 1 ? end : end - 1; // before the line break
+            goTo(Math.min(start + Math.max(0, column - 1), Math.max(start, lastColumn)));
+        } catch (BadLocationException ignored) {
+            // index was clamped to an existing line, cannot happen
+        }
     }
 
     void focusEditor() {

@@ -4,6 +4,7 @@ import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CodeBlock;
 import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
+import dev.jeditor.compiler.JavaTypeTemplate;
 import dev.jeditor.compiler.run.JavaRuntime;
 import dev.jeditor.compiler.run.RuntimeRegistry;
 
@@ -25,14 +26,22 @@ import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JList;
 import javax.swing.JTabbedPane;
+import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import javax.swing.ToolTipManager;
 import javax.swing.WindowConstants;
+import javax.swing.event.AncestorEvent;
+import javax.swing.event.AncestorListener;
+import javax.swing.text.JTextComponent;
+import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
+import java.awt.KeyboardFocusManager;
 import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
@@ -44,6 +53,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -66,7 +76,7 @@ final class MainFrame extends JFrame {
         return thread;
     });
 
-    private final FileTreePanel fileTree = new FileTreePanel(this::openFile);
+    private final FileTreePanel fileTree = new FileTreePanel(new FileTreeActions());
     private final JTabbedPane tabs = new JTabbedPane();
     private final StructurePanel structure = new StructurePanel(block -> withCurrentTab(tab -> tab.goTo(block.startOffset())));
     private final ProblemsPanel problems = new ProblemsPanel(d -> withCurrentTab(tab -> tab.goTo(d.startOffset())));
@@ -80,6 +90,14 @@ final class MainFrame extends JFrame {
     private final JComboBox<JavaRuntime> runtimeChooser = new JComboBox<>();
     private final Action runAction = action("Run Main Class", KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK), this::runCurrentFile);
     private final Action stopAction = action("Stop", KeyStroke.getKeyStroke(KeyEvent.VK_F2, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), runner::stop);
+    private final Action newClassAction = action("New Java Class\u2026",
+            KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+            () -> newJavaClass(fileTree.targetDirectory()));
+    private final Action newFileAction = action("New File\u2026", null, () -> newFile(fileTree.targetDirectory()));
+    private final Action newFolderAction = action("New Folder\u2026", null, () -> newFolder(fileTree.targetDirectory()));
+    private final Action saveAction = action("Save",
+            KeyStroke.getKeyStroke(KeyEvent.VK_S, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+            () -> withCurrentTab(this::save));
     private final Action closeFolderAction = action("Close Folder", null, this::closeFolder);
     private boolean updatingRuntimeChooser;
 
@@ -133,6 +151,7 @@ final class MainFrame extends JFrame {
         setSize(1280, 820);
         setLocationRelativeTo(null);
         left.setDividerLocation(430);
+        right.setDividerLocation(520); // explicit: with no tab open yet the editor area would otherwise collapse
 
         if (!analyzer.isAvailable()) {
             statusLeft.setText("No Java compiler found: run JEditor on a JDK (not a JRE) to get error checking.");
@@ -189,6 +208,17 @@ final class MainFrame extends JFrame {
 
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
+        newClassAction.putValue(Action.SMALL_ICON, Icons.of(CodeBlock.Kind.CLASS));
+        newClassAction.putValue(Action.SHORT_DESCRIPTION, "Create a new Java class in the selected folder");
+        newFileAction.putValue(Action.SHORT_DESCRIPTION, "Create a new file in the selected folder");
+        saveAction.putValue(Action.SHORT_DESCRIPTION, "Save the current file");
+        bar.addSeparator(new Dimension(6, 0));
+        for (Action action : List.of(newClassAction, newFileAction, saveAction)) {
+            JButton button = new JButton(action);
+            button.setFocusable(false);
+            button.setText(((String) action.getValue(Action.NAME)).replace("\u2026", ""));
+            bar.add(button);
+        }
         bar.add(Box.createHorizontalGlue());
         bar.add(runtimeChooser);
         bar.addSeparator(new Dimension(6, 0));
@@ -196,7 +226,7 @@ final class MainFrame extends JFrame {
         bar.add(new JButton(stopAction)).setFocusable(false);
         bar.addSeparator(new Dimension(6, 0));
         for (Component component : bar.getComponents()) {
-            if (component instanceof JButton button) {
+            if (component instanceof JButton button && (button.getAction() == runAction || button.getAction() == stopAction)) {
                 button.setHideActionText(true);
             }
         }
@@ -317,25 +347,39 @@ final class MainFrame extends JFrame {
         int menuKey = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         JMenu file = new JMenu("File");
         file.setMnemonic('F');
+        file.add(newClassAction);
+        file.add(newFileAction);
+        file.add(newFolderAction);
+        file.addSeparator();
         file.add(action("Open Folder…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey | InputEvent.SHIFT_DOWN_MASK), this::chooseFolder));
         file.add(action("Open File…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey), this::chooseFile));
         file.add(action("Recent Files\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_E, menuKey), this::showRecentFiles));
         file.add(closeFolderAction);
         file.addSeparator();
-        file.add(action("Save", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey), () -> withCurrentTab(this::save)));
+        file.add(saveAction);
         file.add(action("Save All", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey | InputEvent.SHIFT_DOWN_MASK), this::saveAll));
         file.add(action("Close Tab", KeyStroke.getKeyStroke(KeyEvent.VK_W, menuKey), () -> withCurrentTab(this::close)));
         file.addSeparator();
-        file.add(action("Refresh File Tree", KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), () -> {
-            if (folder != null) {
-                fileTree.setRoot(folder);
-            }
-        }));
+        file.add(action("Refresh File Tree", KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), fileTree::refresh));
         file.addSeparator();
         file.add(action("Exit", null, this::exit));
 
+        JMenu edit = new JMenu("Edit");
+        edit.setMnemonic('E');
+        edit.add(action("Undo", KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuKey), () -> editCommand(EditorTab::undo, null)));
+        edit.add(action("Redo", KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuKey | InputEvent.SHIFT_DOWN_MASK), () -> editCommand(EditorTab::redo, null)));
+        edit.addSeparator();
+        edit.add(action("Cut", KeyStroke.getKeyStroke(KeyEvent.VK_X, menuKey), () -> editCommand(EditorTab::cut, JTextComponent::cut)));
+        edit.add(action("Copy", KeyStroke.getKeyStroke(KeyEvent.VK_C, menuKey), () -> editCommand(EditorTab::copy, JTextComponent::copy)));
+        edit.add(action("Paste", KeyStroke.getKeyStroke(KeyEvent.VK_V, menuKey), () -> editCommand(EditorTab::paste, JTextComponent::paste)));
+        edit.add(action("Select All", KeyStroke.getKeyStroke(KeyEvent.VK_A, menuKey), () -> editCommand(EditorTab::selectAll, JTextComponent::selectAll)));
+        edit.addSeparator();
+        edit.add(action("Find\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_F, menuKey), () -> withCurrentTab(tab -> tab.showFind(false))));
+        edit.add(action("Replace\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_R, menuKey), () -> withCurrentTab(tab -> tab.showFind(true))));
+
         JMenu navigate = new JMenu("Navigate");
         navigate.setMnemonic('N');
+        navigate.add(action("Go to Line\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_G, menuKey), this::goToLine));
         navigate.add(action("Go to Declaration", KeyStroke.getKeyStroke(KeyEvent.VK_B, menuKey),
                 () -> withCurrentTab(EditorTab::goToDeclarationAtCaret)));
 
@@ -348,6 +392,7 @@ final class MainFrame extends JFrame {
 
         JMenuBar bar = new JMenuBar();
         bar.add(file);
+        bar.add(edit);
         bar.add(navigate);
         bar.add(run);
         return bar;
@@ -379,6 +424,279 @@ final class MainFrame extends JFrame {
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             openFile(chooser.getSelectedFile().toPath());
         }
+    }
+
+    // ---- editing ------------------------------------------------------------------------------
+
+    /**
+     * Routes an Edit-menu command to whatever has the keyboard focus: the editor, or another text
+     * field (find bar, console input) for the commands that make sense there.
+     *
+     * @param onField what to do when a plain text field is focused; null if the command is editor-only
+     */
+    private void editCommand(Consumer<EditorTab> onEditor, Consumer<JTextComponent> onField) {
+        Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getPermanentFocusOwner();
+        if (focus instanceof JTextComponent field && !(focus instanceof RSyntaxTextArea)) {
+            if (onField != null) {
+                onField.accept(field);
+            }
+            return;
+        }
+        withCurrentTab(onEditor);
+    }
+
+    private void goToLine() {
+        EditorTab tab = currentTab();
+        if (tab == null) {
+            return;
+        }
+        String input = (String) JOptionPane.showInputDialog(this, "Line[:column]  (1–" + tab.lineCount() + ")",
+                "Go to Line", JOptionPane.PLAIN_MESSAGE, null, null, tab.caretLine() + ":" + tab.caretColumn());
+        if (input == null) {
+            return;
+        }
+        int[] position = parseLineColumn(input);
+        if (position == null) {
+            error("'" + input.strip() + "' is not a line number.");
+        } else {
+            tab.goToLine(position[0], position[1]);
+        }
+    }
+
+    /** Parses "12" or "12:5" into {line, column}; null if it is neither. */
+    static int[] parseLineColumn(String input) {
+        String[] parts = input.strip().split("\\s*[:,]\\s*", -1);
+        try {
+            if (parts.length == 1) {
+                return new int[] {Math.max(1, Integer.parseInt(parts[0])), 1};
+            }
+            if (parts.length == 2) {
+                return new int[] {Math.max(1, Integer.parseInt(parts[0])), Math.max(1, Integer.parseInt(parts[1]))};
+            }
+        } catch (NumberFormatException e) {
+            // falls through
+        }
+        return null;
+    }
+
+    // ---- creating, renaming, deleting files ---------------------------------------------------
+
+    private final class FileTreeActions implements FileTreePanel.Actions {
+        @Override
+        public void open(Path file) {
+            openFile(file);
+        }
+
+        @Override
+        public void newJavaClass(Path directory) {
+            MainFrame.this.newJavaClass(directory);
+        }
+
+        @Override
+        public void newFile(Path directory) {
+            MainFrame.this.newFile(directory);
+        }
+
+        @Override
+        public void newFolder(Path directory) {
+            MainFrame.this.newFolder(directory);
+        }
+
+        @Override
+        public void rename(Path target) {
+            MainFrame.this.rename(target);
+        }
+
+        @Override
+        public void delete(Path target) {
+            MainFrame.this.delete(target);
+        }
+    }
+
+    private void newJavaClass(Path directory) {
+        if (directory == null) {
+            error("Open a folder first (File → Open Folder…), then create the class in it.");
+            return;
+        }
+        JTextField name = new JTextField(24);
+        JComboBox<JavaTypeTemplate.Kind> kind = new JComboBox<>(JavaTypeTemplate.Kind.values());
+        kind.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+                super.getListCellRendererComponent(list, value, index, selected, focus);
+                setText(((JavaTypeTemplate.Kind) value).label());
+                return this;
+            }
+        });
+        JPanel form = new JPanel(new GridLayout(0, 1, 0, 4));
+        form.add(new JLabel("Name (e.g. Invoice, or billing.Invoice to also create the package):"));
+        form.add(name);
+        form.add(new JLabel("Kind:"));
+        form.add(kind);
+        form.add(new JLabel("<html><font color='gray'>In: " + directory + "</font></html>"));
+        focusWhenShown(name);
+
+        while (JOptionPane.showConfirmDialog(this, form, "New Java Class", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+            try {
+                JavaTypeTemplate.NewType type = JavaTypeTemplate.plan(directory, folder, name.getText(),
+                        (JavaTypeTemplate.Kind) kind.getSelectedItem());
+                Path relative = directory.relativize(type.file());
+                Path created = FileOperations.createFile(directory, relative.toString(), type.source());
+                showCreated(created, type.source().indexOf('{') + 2);
+                return;
+            } catch (IllegalArgumentException e) {
+                error(e.getMessage()); // and ask again, keeping what was typed
+            } catch (IOException e) {
+                error("Cannot create the class:\n" + e.getMessage());
+                return;
+            }
+        }
+    }
+
+    private void newFile(Path directory) {
+        createByName(directory, "New File", "File name (e.g. notes.txt, or docs/notes.txt):", true);
+    }
+
+    private void newFolder(Path directory) {
+        createByName(directory, "New Folder", "Folder name:", false);
+    }
+
+    private void createByName(Path directory, String title, String prompt, boolean file) {
+        if (directory == null) {
+            error("Open a folder first (File → Open Folder…).");
+            return;
+        }
+        String name = "";
+        while ((name = (String) JOptionPane.showInputDialog(this, prompt + "\nIn: " + directory, title,
+                JOptionPane.PLAIN_MESSAGE, null, null, name)) != null) {
+            try {
+                if (file) {
+                    showCreated(FileOperations.createFile(directory, name, ""), 0);
+                } else {
+                    Path created = FileOperations.createFolder(directory, name);
+                    fileTree.refresh();
+                    fileTree.reveal(created);
+                }
+                return;
+            } catch (IllegalArgumentException e) {
+                error(e.getMessage());
+            } catch (IOException e) {
+                error("Cannot create '" + name + "':\n" + e.getMessage());
+                return;
+            }
+        }
+    }
+
+    private void showCreated(Path file, int caretOffset) {
+        fileTree.refresh();
+        fileTree.reveal(file);
+        EditorTab tab = openFile(file);
+        if (tab != null) {
+            tab.goTo(caretOffset);
+        }
+    }
+
+    private void rename(Path target) {
+        String current = target.getFileName().toString();
+        String name = current;
+        while ((name = (String) JOptionPane.showInputDialog(this, "New name for '" + current + "':", "Rename",
+                JOptionPane.PLAIN_MESSAGE, null, null, name)) != null) {
+            try {
+                // Open tabs of the renamed file (or of files in the renamed folder) are closed, saving
+                // on request, and reopened at their new location.
+                List<Path> open = openFilesUnder(target);
+                Path selected = currentTab() == null ? null : currentTab().file();
+                for (EditorTab tab : tabsUnder(target)) {
+                    if (!close(tab)) {
+                        return;
+                    }
+                }
+                Path renamed = FileOperations.rename(target, name);
+                fileTree.refresh();
+                fileTree.reveal(renamed);
+                for (Path file : open) {
+                    openFile(FileOperations.relocated(file, target, renamed));
+                }
+                if (selected != null) {
+                    openFile(FileOperations.relocated(selected, target, renamed)); // back to the tab the user was on
+                }
+                return;
+            } catch (IllegalArgumentException e) {
+                error(e.getMessage());
+            } catch (IOException e) {
+                error("Cannot rename '" + current + "':\n" + e.getMessage());
+                fileTree.refresh();
+                return;
+            }
+        }
+    }
+
+    private void delete(Path target) {
+        boolean directory = Files.isDirectory(target);
+        String what = (directory ? "the folder '" : "'") + target.getFileName() + "'" + (directory ? " and everything in it" : "");
+        String question = FileOperations.deletesToTrash()
+                ? "Move " + what + " to the trash?"
+                : "Permanently delete " + what + "?\nThis cannot be undone.";
+        if (JOptionPane.showConfirmDialog(this, question, "Delete", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        for (EditorTab tab : tabsUnder(target)) { // their content is being deleted: no point asking to save
+            tab.dispose();
+            tabs.remove(tab);
+        }
+        try {
+            FileOperations.delete(target);
+        } catch (IOException e) {
+            error("Cannot delete '" + target.getFileName() + "':\n" + e.getMessage());
+        }
+        fileTree.refresh();
+        refreshViews();
+    }
+
+    private List<EditorTab> tabsUnder(Path fileOrDirectory) {
+        List<EditorTab> result = new ArrayList<>();
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            if (tabAt(i).file().startsWith(fileOrDirectory)) {
+                result.add(tabAt(i));
+            }
+        }
+        return result;
+    }
+
+    private List<Path> openFilesUnder(Path fileOrDirectory) {
+        return tabsUnder(fileOrDirectory).stream().map(EditorTab::file).toList();
+    }
+
+    /** Gives a dialog's field the keyboard focus as soon as the dialog appears. */
+    private static void focusWhenShown(JTextField field) {
+        field.addAncestorListener(new AncestorListener() {
+            @Override
+            public void ancestorAdded(AncestorEvent event) {
+                // The dialog is not focusable yet at this point, so ask again once its window has the
+                // focus; otherwise the OK button keeps it and typing goes nowhere.
+                java.awt.Window window = SwingUtilities.getWindowAncestor(field);
+                if (window != null) {
+                    window.addWindowFocusListener(new java.awt.event.WindowAdapter() {
+                        @Override
+                        public void windowGainedFocus(WindowEvent e) {
+                            field.requestFocusInWindow();
+                            window.removeWindowFocusListener(this);
+                        }
+                    });
+                }
+                field.requestFocusInWindow();
+            }
+
+            @Override
+            public void ancestorRemoved(AncestorEvent event) {
+            }
+
+            @Override
+            public void ancestorMoved(AncestorEvent event) {
+            }
+        });
     }
 
     // ---- saving and closing -------------------------------------------------------------------

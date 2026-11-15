@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /** Text shown in the problems header, status bar breadcrumb, and the file-type mapping. */
 class ViewTextTest {
@@ -37,6 +39,17 @@ class ViewTextTest {
         CodeBlock type = new CodeBlock(CodeBlock.Kind.CLASS, "Job", 0, 50, 1, 9, List.of(method));
         assertEquals("Job  ›  run() : void   (lines 3–7)", MainFrame.breadcrumb(List.of(type, method)));
         assertEquals(" ", MainFrame.breadcrumb(List.of()));
+    }
+
+    @Test
+    void goToLineInputParsing() {
+        assertArrayEquals(new int[] {12, 1}, MainFrame.parseLineColumn(" 12 "));
+        assertArrayEquals(new int[] {12, 5}, MainFrame.parseLineColumn("12:5"));
+        assertArrayEquals(new int[] {12, 5}, MainFrame.parseLineColumn("12 , 5"));
+        assertArrayEquals(new int[] {1, 1}, MainFrame.parseLineColumn("0:-3"));
+        assertNull(MainFrame.parseLineColumn("abc"));
+        assertNull(MainFrame.parseLineColumn("1:2:3"));
+        assertNull(MainFrame.parseLineColumn(""));
     }
 
     @Test

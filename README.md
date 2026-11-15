@@ -21,6 +21,10 @@ middle, and live compile-error checking as you type.
   ends; the **Structure** panel outlines types and members (click to navigate); the status bar shows
   the block the caret is in and the lines it spans.
 
+- **Files** — *New Java Class* (toolbar, Ctrl+N) creates a class, interface, enum or record with
+  its `package` line; right-click in the file viewer for New File/Folder, Rename and Delete.
+- **Editing basics** — Find (Ctrl+F) and Replace (Ctrl+R) in the current file, Go to Line
+  (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
   Enter opens the selected one.
 - **Navigation** — Ctrl+click a type name (or Ctrl+B at the caret) to open the type's source in

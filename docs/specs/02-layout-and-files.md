@@ -27,6 +27,5 @@
 
 ## Not covered
 
-- Creating, renaming or deleting files from the file viewer.
-- Search, and find/replace across files.
-- The file viewer does not refresh by itself when files change on disk (*File → Refresh File Tree*, F5).
+- Creating, renaming and deleting files, and find/replace, are covered in [spec 09](09-files-and-editing-basics.md).
+- The file viewer does not notice changes made by other programs until refreshed (*File → Refresh File Tree*, F5).

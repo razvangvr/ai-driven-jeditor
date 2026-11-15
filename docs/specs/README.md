@@ -12,6 +12,7 @@ The requirements for JEditor, as stated by the project owner, grouped by area.
 | [06](06-navigation.md) | Navigating to a type |
 | [07](07-documentation.md) | Documentation |
 | [08](08-recent-files.md) | Recent files |
+| [09](09-files-and-editing-basics.md) | Creating files and basic editing |
 
 ## How to read these
 
