@@ -83,6 +83,10 @@ final class MainFrame extends JFrame {
     private final Action closeFolderAction = action("Close Folder", null, this::closeFolder);
     private boolean updatingRuntimeChooser;
 
+    private final RecentFiles recentFiles = RecentFiles.forCurrentUser();
+    /** True while tabs are being closed in bulk, when tab selection changes are not the user's doing. */
+    private boolean closingAllTabs;
+
     private Path folder;
 
     MainFrame() {
@@ -100,6 +104,9 @@ final class MainFrame extends JFrame {
         tabs.addChangeListener(e -> {
             refreshViews();
             withCurrentTab(EditorTab::focusEditor);
+            if (!closingAllTabs) {
+                withCurrentTab(tab -> recentFiles.touch(tab.file()));
+            }
         });
 
         JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, fileTree, structure);
@@ -312,6 +319,7 @@ final class MainFrame extends JFrame {
         file.setMnemonic('F');
         file.add(action("Open Folder…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey | InputEvent.SHIFT_DOWN_MASK), this::chooseFolder));
         file.add(action("Open File…", KeyStroke.getKeyStroke(KeyEvent.VK_O, menuKey), this::chooseFile));
+        file.add(action("Recent Files\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_E, menuKey), this::showRecentFiles));
         file.add(closeFolderAction);
         file.addSeparator();
         file.add(action("Save", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey), () -> withCurrentTab(this::save)));
@@ -413,12 +421,24 @@ final class MainFrame extends JFrame {
 
     /** Closes every tab; stops and returns false as soon as the user cancels one. */
     private boolean closeAllTabs() {
-        while (tabs.getTabCount() > 0) {
-            if (!close(tabAt(tabs.getTabCount() - 1))) {
-                return false;
+        closingAllTabs = true;
+        try {
+            while (tabs.getTabCount() > 0) {
+                if (!close(tabAt(tabs.getTabCount() - 1))) {
+                    return false;
+                }
             }
+            return true;
+        } finally {
+            closingAllTabs = false;
         }
-        return true;
+    }
+
+    /** Shows the most recently used files; choosing one opens it (or switches to its tab). */
+    private void showRecentFiles() {
+        EditorTab current = currentTab();
+        new RecentFilesDialog(this, recentFiles.list(), current == null ? null : current.file(), folder, this::openFile)
+                .setVisible(true);
     }
 
     private void exit() {

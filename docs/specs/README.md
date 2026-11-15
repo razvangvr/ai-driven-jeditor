@@ -11,6 +11,7 @@ The requirements for JEditor, as stated by the project owner, grouped by area.
 | [05](05-running-programs.md) | Java runtimes and running main classes |
 | [06](06-navigation.md) | Navigating to a type |
 | [07](07-documentation.md) | Documentation |
+| [08](08-recent-files.md) | Recent files |
 
 ## How to read these
 

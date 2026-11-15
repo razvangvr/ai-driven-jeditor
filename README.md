@@ -21,6 +21,8 @@ middle, and live compile-error checking as you type.
   ends; the **Structure** panel outlines types and members (click to navigate); the status bar shows
   the block the caret is in and the lines it spans.
 
+- **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
+  Enter opens the selected one.
 - **Navigation** — Ctrl+click a type name (or Ctrl+B at the caret) to open the type's source in
   a new tab. Works for methods, fields and variables too.
 - **Run** — the ▶ button (Shift+F10) compiles the current file and runs its `main` method on the
@@ -36,6 +38,14 @@ Requirements: [docs/specs/](docs/specs/README.md).
 
 Requires a **JDK 21+** (a JDK, not a JRE: the editor uses the JDK's own compiler) and Maven.
 
+The quickest way is the launcher script, which builds first if needed:
+
+```bash
+./jeditor.sh /path/to/folder-or-file
+```
+
+Without an argument the current directory is opened. To do the two steps by hand:
+
 ```bash
 mvn clean package
 ```
@@ -43,8 +53,6 @@ mvn clean package
 ```bash
 java -jar jeditor-ui/target/jeditor.jar /path/to/folder-or-file
 ```
-
-Without an argument the current directory is opened.
 
 ## Project structure
 
