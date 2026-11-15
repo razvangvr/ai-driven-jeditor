@@ -45,6 +45,8 @@ import java.util.stream.Stream;
  */
 final class FileTreePanel extends JPanel {
 
+    private static final System.Logger LOG = System.getLogger(FileTreePanel.class.getName());
+
     /** What the file viewer asks the application to do; it never touches files itself. */
     interface Actions {
         void open(Path file);
@@ -96,17 +98,18 @@ final class FileTreePanel extends JPanel {
         });
         tree.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mousePressed(MouseEvent e) {
+                // Open on the second *press*. A "click" event is only produced when the pointer does
+                // not move at all between press and release, so with a trackpad or a slightly moving
+                // mouse some double-clicks never arrived, and now that rows can be dragged such a
+                // movement can also start a drag instead.
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        open(path);
+                    int row = tree.getClosestRowForLocation(e.getX(), e.getY());
+                    Rectangle bounds = row < 0 ? null : tree.getRowBounds(row);
+                    if (bounds != null && e.getY() >= bounds.y && e.getY() < bounds.y + bounds.height) {
+                        open(tree.getPathForRow(row));
                     }
                 }
-            }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
                 if (SwingUtilities.isLeftMouseButton(e) && tree.getPathForLocation(e.getX(), e.getY()) == null) {
                     selectRowAt(e); // clicking beside a name selects its row too, not only clicking on it
                 }
@@ -331,6 +334,7 @@ final class FileTreePanel extends JPanel {
                 });
                 return true;
             } catch (UnsupportedFlavorException | IOException e) {
+                LOG.log(System.Logger.Level.WARNING, "Cannot read what was dropped onto " + directory, e);
                 return false;
             }
         }
@@ -425,7 +429,8 @@ final class FileTreePanel extends JPanel {
                         .toList();
                 sorted.forEach(child -> add(new FileNode(child)));
             } catch (IOException e) {
-                // unreadable directory shows up as empty
+                // shows up as empty
+                LOG.log(System.Logger.Level.WARNING, "Cannot list the contents of " + path, e);
             }
             return true;
         }

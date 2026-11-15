@@ -53,7 +53,7 @@ final class ProblemsPanel extends JPanel {
         });
         table.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mousePressed(MouseEvent e) { // press, not click: see FileTreePanel
                 int row = table.rowAtPoint(e.getPoint());
                 if (e.getClickCount() == 2 && row >= 0) {
                     onNavigate.accept(model.diagnostics.get(row));

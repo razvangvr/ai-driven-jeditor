@@ -22,6 +22,8 @@ import java.util.Objects;
  */
 final class RecentFiles {
 
+    private static final System.Logger LOG = System.getLogger(RecentFiles.class.getName());
+
     static final int LIMIT = 10;
 
     /** Folder, inside an opened folder, where the editor keeps what it remembers about that folder. */
@@ -170,12 +172,13 @@ final class RecentFiles {
                             folders.put(path, Path.of(columns[1].strip()).toAbsolutePath().normalize());
                         }
                     }
-                } catch (InvalidPathException ignored) {
+                } catch (InvalidPathException e) {
                     // a mangled line loses one entry, not the whole list
+                    LOG.log(System.Logger.Level.WARNING, "Skipping an unreadable entry in " + store, e);
                 }
             }
-        } catch (IOException ignored) {
-            // an unreadable list is an empty list
+        } catch (IOException e) {
+            LOG.log(System.Logger.Level.WARNING, "Cannot read " + store + "; starting with an empty recent-files list", e);
         }
     }
 
@@ -185,8 +188,9 @@ final class RecentFiles {
                 Files.createDirectories(store.getParent());
             }
             Files.write(store, files.stream().map(this::stored).toList(), StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
-            // losing the recent list is not worth interrupting the user for
+        } catch (IOException e) {
+            // not worth interrupting the user for, but worth knowing about
+            LOG.log(System.Logger.Level.WARNING, "Cannot save the recent-files list to " + store, e);
         }
     }
 }

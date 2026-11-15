@@ -15,6 +15,8 @@ import java.util.stream.Stream;
  */
 public final class JavaTypeTemplate {
 
+    private static final System.Logger LOG = System.getLogger(JavaTypeTemplate.class.getName());
+
     public enum Kind {
         CLASS("class"), INTERFACE("interface"), ENUM("enum"), RECORD("record"), ANNOTATION("@interface");
 
@@ -136,7 +138,7 @@ public final class JavaTypeTemplate {
                 }
             }
         } catch (IOException | RuntimeException e) {
-            // unreadable directory or file: no evidence from here
+            LOG.log(System.Logger.Level.WARNING, "Cannot read the sources in " + dir + " to work out their package", e);
         }
         return Optional.empty();
     }

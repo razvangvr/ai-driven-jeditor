@@ -18,6 +18,8 @@ import java.util.Properties;
  */
 public final class RuntimeRegistry {
 
+    private static final System.Logger LOG = System.getLogger(RuntimeRegistry.class.getName());
+
     private final Path file;
     private final List<JavaRuntime> runtimes = new ArrayList<>();
     private JavaRuntime selected;
@@ -94,7 +96,8 @@ public final class RuntimeRegistry {
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             properties.load(reader);
         } catch (IOException | IllegalArgumentException e) {
-            return; // unreadable settings are treated as no settings
+            LOG.log(System.Logger.Level.WARNING, "Cannot read " + file + "; starting with no Java runtimes", e);
+            return;
         }
         String selectedHome = properties.getProperty("selected", "");
         for (int i = 0; properties.containsKey("runtime." + i); i++) {

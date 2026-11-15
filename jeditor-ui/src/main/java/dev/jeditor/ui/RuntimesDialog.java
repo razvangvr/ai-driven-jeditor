@@ -95,6 +95,9 @@ final class RuntimesDialog extends JDialog {
             reload();
             list.setSelectedValue(added, true);
         } catch (IllegalArgumentException | UncheckedIOException e) {
+            if (e instanceof UncheckedIOException) {
+                System.getLogger(RuntimesDialog.class.getName()).log(System.Logger.Level.WARNING, "Cannot save the list of Java runtimes", e);
+            }
             JOptionPane.showMessageDialog(this, e.getMessage(), "Java Runtimes", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -105,6 +108,7 @@ final class RuntimesDialog extends JDialog {
             try {
                 registry.remove(runtime);
             } catch (UncheckedIOException e) {
+                System.getLogger(RuntimesDialog.class.getName()).log(System.Logger.Level.WARNING, "Cannot save the list of Java runtimes", e);
                 JOptionPane.showMessageDialog(this, e.getMessage(), "Java Runtimes", JOptionPane.ERROR_MESSAGE);
             }
             reload();

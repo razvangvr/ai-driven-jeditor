@@ -71,7 +71,7 @@ final class RecentFilesDialog extends JDialog {
         });
         list.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mousePressed(MouseEvent e) { // press, not click: see FileTreePanel
                 if (e.getClickCount() == 2 && list.locationToIndex(e.getPoint()) >= 0) {
                     open.run();
                 }

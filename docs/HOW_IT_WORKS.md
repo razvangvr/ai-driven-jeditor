@@ -131,6 +131,18 @@ Run ▶ ─▶ save ─▶ ProgramBuilder (javac, --release N) ─▶ temp dir o
    as a separate process, in the opened folder. `RunController` streams its output into the
    **Console** tab; the *Input* field feeds its standard input; *Stop* kills it.
 
+## Error handling and the error log
+
+- Code in all modules reports problems through the JDK's built-in logging facade
+  (`System.Logger`); no logging library is used.
+- `ErrorLog` (UI module) is the single place that decides where reports go: it appends
+  warnings and errors, with stack traces, to `~/.jeditor/errors-<date>.log`.
+- It also installs a default uncaught-exception handler, so an exception that no code handled —
+  on the UI thread or a background thread — is logged and announced in the status bar instead
+  of vanishing.
+- Background work is started with `execute()`, never `submit()`: `submit()` stores anything
+  thrown in a `Future` that nobody reads.
+
 ## Limits worth knowing
 
 - The editor itself must run on a **JDK 21+** (it needs `javac` in-process). Runtimes you add

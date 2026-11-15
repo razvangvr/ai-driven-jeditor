@@ -26,6 +26,8 @@ import java.util.regex.Pattern;
  */
 public final class JavaFormatter {
 
+    private static final System.Logger LOG = System.getLogger(JavaFormatter.class.getName());
+
     /** Width of one indentation level, in spaces. */
     public static final int INDENT = 4;
     /** Lines longer than this are wrapped. */
@@ -84,7 +86,8 @@ public final class JavaFormatter {
             edit = formatter.format(CodeFormatter.K_COMPILATION_UNIT | CodeFormatter.F_INCLUDE_COMMENTS,
                     source, offset, length, 0, "\n");
         } catch (RuntimeException e) {
-            return Optional.empty(); // the formatter gave up on input it could not make sense of
+            LOG.log(System.Logger.Level.WARNING, "The formatter failed on the source it was given", e);
+            return Optional.empty();
         }
         if (edit == null) {
             return Optional.empty();
@@ -93,6 +96,7 @@ public final class JavaFormatter {
         try {
             edit.apply(document);
         } catch (BadLocationException | RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "The formatter's edits could not be applied to the source", e);
             return Optional.empty();
         }
         return Optional.of(document.get());

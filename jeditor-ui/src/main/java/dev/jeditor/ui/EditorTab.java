@@ -51,6 +51,8 @@ import java.util.concurrent.ExecutorService;
  */
 final class EditorTab extends JPanel {
 
+    private static final System.Logger LOG = System.getLogger(EditorTab.class.getName());
+
     /** Pause after the last keystroke before the file is re-checked. */
     private static final int ANALYSIS_DELAY_MS = 400;
 
@@ -182,8 +184,9 @@ final class EditorTab extends JPanel {
                     bounds.grow(0, textArea.getVisibleRect().height / 3);
                     textArea.scrollRectToVisible(bounds);
                 }
-            } catch (BadLocationException ignored) {
-                // offset was clamped to the document, cannot happen
+            } catch (BadLocationException e) {
+                // offset was clamped to the document, so this should be impossible
+                LOG.log(System.Logger.Level.WARNING, "Cannot scroll to offset " + target + " in " + file, e);
             }
         });
     }
@@ -197,11 +200,12 @@ final class EditorTab extends JPanel {
             return;
         }
         String text = textArea.getText();
-        executor.submit(() -> {
+        executor.execute(() -> {
             Optional<DeclarationTarget> target;
             try {
                 target = analyzer.findDeclaration(file, text, offset);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
+                LOG.log(System.Logger.Level.ERROR, "Go to declaration failed in " + file, e);
                 target = Optional.empty();
             }
             Optional<DeclarationTarget> found = target;
@@ -257,13 +261,14 @@ final class EditorTab extends JPanel {
         String text = textArea.getText();
         int selectionStart = textArea.getSelectionStart();
         int selectionEnd = textArea.getSelectionEnd();
-        executor.submit(() -> {
+        executor.execute(() -> {
             Optional<String> result;
             try {
                 result = selectionEnd > selectionStart
                         ? formatter.format(text, selectionStart, selectionEnd - selectionStart)
                         : formatter.format(text);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
+                LOG.log(System.Logger.Level.ERROR, "Reformatting failed in " + file, e);
                 result = Optional.empty();
             }
             Optional<String> formatted = result;
@@ -349,8 +354,9 @@ final class EditorTab extends JPanel {
             int end = textArea.getLineEndOffset(index);
             int lastColumn = index == textArea.getLineCount() - 1 ? end : end - 1; // before the line break
             goTo(Math.min(start + Math.max(0, column - 1), Math.max(start, lastColumn)));
-        } catch (BadLocationException ignored) {
-            // index was clamped to an existing line, cannot happen
+        } catch (BadLocationException e) {
+            // index was clamped to an existing line, so this should be impossible
+            LOG.log(System.Logger.Level.WARNING, "Cannot go to line " + line + " of " + file, e);
         }
     }
 
@@ -370,6 +376,8 @@ final class EditorTab extends JPanel {
         try {
             content = Files.readString(file, StandardCharsets.UTF_8);
         } catch (CharacterCodingException e) {
+            // Expected for legacy files, so one line without a stack trace is enough.
+            LOG.log(System.Logger.Level.WARNING, file + " is not valid UTF-8 (" + e.getMessage() + "); opening it as ISO-8859-1");
             charset = StandardCharsets.ISO_8859_1;
             content = Files.readString(file, charset);
         }
@@ -393,8 +401,9 @@ final class EditorTab extends JPanel {
             if (in != null) {
                 Theme.load(in).apply(textArea);
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
             // the default colours are perfectly usable
+            LOG.log(System.Logger.Level.WARNING, "Cannot load the editor colour theme; using the default colours", e);
         }
         textArea.setFont(textArea.getFont().deriveFont(13f));
 
@@ -461,11 +470,15 @@ final class EditorTab extends JPanel {
         }
         long requested = ++generation;
         String text = textArea.getText();
-        executor.submit(() -> {
+        // execute(), not submit(): submit() parks anything thrown in a Future nobody reads.
+        executor.execute(() -> {
             AnalysisResult fresh;
             try {
                 fresh = analyzer.analyze(file, text);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
+                // Also Errors (a compiler stack overflow on deeply nested code, a linkage problem):
+                // otherwise the Problems view would say "compiling..." for ever.
+                LOG.log(System.Logger.Level.ERROR, "Checking " + file + " for errors failed", e);
                 fresh = AnalysisResult.EMPTY;
             }
             AnalysisResult computed = fresh;
@@ -500,8 +513,9 @@ final class EditorTab extends JPanel {
         }
         try {
             gutter.addLineTrackingIcon(line, Icons.of(diagnostic.severity()), DiagnosticsParser.toHtml(diagnostic.message()));
-        } catch (BadLocationException ignored) {
+        } catch (BadLocationException e) {
             // line vanished between analysis and display; the next analysis will catch up
+            LOG.log(System.Logger.Level.WARNING, "Cannot mark line " + (line + 1) + " of " + file + " in the gutter", e);
         }
     }
 

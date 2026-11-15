@@ -23,6 +23,8 @@ import java.util.regex.Pattern;
  */
 public record JavaRuntime(Path home, String version, int featureVersion, boolean jdk) {
 
+    private static final System.Logger LOG = System.getLogger(JavaRuntime.class.getName());
+
     private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
     private static final Pattern VERSION_OUTPUT = Pattern.compile("version \"([^\"]+)\"");
 
@@ -96,8 +98,8 @@ public record JavaRuntime(Path home, String version, int featureVersion, boolean
                         return Optional.of(version);
                     }
                 }
-            } catch (IOException | IllegalArgumentException ignored) {
-                // fall through to asking the executable
+            } catch (IOException | IllegalArgumentException e) {
+                LOG.log(System.Logger.Level.WARNING, "Cannot read " + release + "; asking the java executable for its version instead", e);
             }
         }
         return askExecutable(home);
@@ -124,7 +126,7 @@ public record JavaRuntime(Path home, String version, int featureVersion, boolean
                 return Optional.of(matcher.group(1));
             }
         } catch (IOException e) {
-            // not runnable: not a usable runtime
+            LOG.log(System.Logger.Level.WARNING, "Cannot run " + executable(home, "java") + " to find its version; not usable as a runtime", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

@@ -34,6 +34,8 @@ import static dev.jeditor.ui.ConsolePanel.Style.OUTPUT;
  */
 final class RunController {
 
+    private static final System.Logger LOG = System.getLogger(RunController.class.getName());
+
     private final ConsolePanel console;
     private final JavaSourceAnalyzer analyzer;
     private final Runnable onStateChange;
@@ -115,7 +117,12 @@ final class RunController {
             try {
                 job.run();
             } catch (IOException | UncheckedIOException e) {
+                LOG.log(System.Logger.Level.WARNING, "Cannot " + what, e);
                 console.append(ERROR, "Cannot " + what + ": " + e.getMessage() + "\n");
+            } catch (RuntimeException | Error e) {
+                // Without this the job would end silently and the Console would just stop.
+                LOG.log(System.Logger.Level.ERROR, "Unexpected failure: " + what, e);
+                console.append(ERROR, "Unexpected error (" + e + "); details are in the error log.\n");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -195,12 +202,13 @@ final class RunController {
                     .forEach(path -> {
                         try {
                             Files.delete(path);
-                        } catch (IOException ignored) {
+                        } catch (IOException e) {
                             // best effort: a leftover temp file is harmless
+                            LOG.log(System.Logger.Level.WARNING, "Cannot delete temporary file " + path, e);
                         }
                     });
-        } catch (IOException ignored) {
-            // best effort
+        } catch (IOException e) {
+            LOG.log(System.Logger.Level.WARNING, "Cannot clean up temporary directory " + dir, e);
         }
     }
 }

@@ -18,6 +18,8 @@ import java.util.stream.Stream;
  */
 final class FileOperations {
 
+    private static final System.Logger LOG = System.getLogger(FileOperations.class.getName());
+
     private FileOperations() {
     }
 
@@ -122,7 +124,8 @@ final class FileOperations {
                 return;
             }
         } catch (RuntimeException e) {
-            // the system refused to trash it (permissions, unsupported location): fall through
+            // the system refused to trash it (permissions, unsupported location): delete it outright below
+            LOG.log(System.Logger.Level.WARNING, "Could not move " + target + " to the trash; deleting it permanently instead", e);
         }
         deletePermanently(target);
         if (Files.exists(target)) {

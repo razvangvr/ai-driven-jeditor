@@ -35,6 +35,8 @@ import java.util.Optional;
  */
 public final class JavaSourceAnalyzer {
 
+    private static final System.Logger LOG = System.getLogger(JavaSourceAnalyzer.class.getName());
+
     private static final List<String> OPTIONS = List.of(
             "-proc:none",
             // Lint like an IDE would, minus the checks that are mostly noise while editing.
@@ -105,9 +107,11 @@ public final class JavaSourceAnalyzer {
             } catch (RuntimeException | IOException e) {
                 // A compiler crash on pathological input must not take the editor down;
                 // whatever was collected so far is still worth showing.
+                LOG.log(System.Logger.Level.WARNING, "The compiler failed while analysing " + file
+                        + "; the problems shown for it may be incomplete", e);
             }
         } catch (IOException e) {
-            // closing the file manager failed: nothing to clean up on our side
+            LOG.log(System.Logger.Level.WARNING, "Could not close the compiler's file manager after analysing " + file, e);
         }
 
         List<CompilationDiagnostic> diagnostics = new ArrayList<>();
@@ -157,7 +161,8 @@ public final class JavaSourceAnalyzer {
             task.analyze(); // attribution is what links each name to the symbol it refers to
             return new DeclarationFinder(Trees.instance(task)).find(tree, offset);
         } catch (RuntimeException | IOException e) {
-            return Optional.empty(); // code too broken to resolve anything
+            LOG.log(System.Logger.Level.WARNING, "Could not resolve the declaration at offset " + offset + " of " + file, e);
+            return Optional.empty();
         }
     }
 

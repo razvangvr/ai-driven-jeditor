@@ -13,9 +13,11 @@ public final class App {
     }
 
     public static void main(String[] args) {
+        ErrorLog errorLog = ErrorLog.install(); // first, so that even start-up failures are recorded
         FlatLightLaf.setup();
         SwingUtilities.invokeLater(() -> {
             MainFrame frame = new MainFrame();
+            frame.setErrorLog(errorLog);
             frame.setVisible(true);
             if (args.length > 0) {
                 Path target = Path.of(args[0]).toAbsolutePath().normalize();

@@ -25,6 +25,8 @@ import java.util.Locale;
  */
 public final class ProgramBuilder {
 
+    private static final System.Logger LOG = System.getLogger(ProgramBuilder.class.getName());
+
     /** Oldest release the JDK 21 compiler can still target. */
     static final int OLDEST_TARGET = 8;
 
@@ -100,6 +102,7 @@ public final class ProgramBuilder {
             files.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(outputDir));
             success = compiler.getTask(null, files, collector, options, null, files.getJavaFileObjectsFromPaths(sources)).call();
         } catch (IOException | RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "The compiler failed while building into " + outputDir, e);
             return failure("Compilation failed: " + e);
         }
 

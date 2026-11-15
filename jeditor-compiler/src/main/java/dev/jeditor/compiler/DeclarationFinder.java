@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
  */
 final class DeclarationFinder {
 
+    private static final System.Logger LOG = System.getLogger(DeclarationFinder.class.getName());
+
     private final Trees trees;
     private final SourcePositions positions;
 
@@ -146,7 +148,8 @@ final class DeclarationFinder {
                 return matcher.start();
             }
         } catch (IOException e) {
-            // fall back to the start of the declaration
+            LOG.log(System.Logger.Level.WARNING, "Cannot read " + unit.getSourceFile().getName()
+                    + " to locate '" + name + "'; using the start of its declaration", e);
         }
         return start;
     }

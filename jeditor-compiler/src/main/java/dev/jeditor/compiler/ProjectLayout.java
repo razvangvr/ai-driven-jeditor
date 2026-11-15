@@ -18,6 +18,8 @@ import java.util.stream.Stream;
  */
 public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
 
+    private static final System.Logger LOG = System.getLogger(ProjectLayout.class.getName());
+
     public static final ProjectLayout NONE = new ProjectLayout(List.of(), List.of());
 
     public ProjectLayout {
@@ -100,6 +102,7 @@ public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
                     .sorted()
                     .toList();
         } catch (IOException e) {
+            LOG.log(System.Logger.Level.WARNING, "Cannot list " + dir + "; its Maven modules are ignored", e);
             return List.of();
         }
     }
@@ -127,8 +130,8 @@ public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
         }
         try (Stream<Path> files = Files.list(dir)) {
             files.filter(f -> f.getFileName().toString().endsWith(".jar")).sorted().forEach(target::add);
-        } catch (IOException ignored) {
-            // unreadable directory: simply contributes nothing
+        } catch (IOException e) {
+            LOG.log(System.Logger.Level.WARNING, "Cannot list " + dir + "; its jars are left off the classpath", e);
         }
     }
 }

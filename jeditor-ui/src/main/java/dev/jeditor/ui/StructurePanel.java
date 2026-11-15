@@ -38,7 +38,7 @@ final class StructurePanel extends JPanel {
         tree.setCellRenderer(new BlockRenderer());
         tree.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mousePressed(MouseEvent e) { // press, not click: see FileTreePanel
                 TreePath path = tree.getPathForLocation(e.getX(), e.getY());
                 if (path != null && ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject() instanceof CodeBlock block) {
                     onNavigate.accept(block);

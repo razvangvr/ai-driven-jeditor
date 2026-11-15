@@ -46,6 +46,11 @@ middle, and live compile-error checking as you type.
 **How it all works, in a few pages: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).**
 Requirements: [docs/specs/](docs/specs/README.md).
 
+## When something goes wrong
+
+Warnings and unexpected errors are written to `~/.jeditor/errors-<date>.log` (one file per day,
+kept for 14 days). *Help → Open Error Log* opens today's file.
+
 ## Build and run
 
 Requires a **JDK 21+** (a JDK, not a JRE: the editor uses the JDK's own compiler) and Maven.

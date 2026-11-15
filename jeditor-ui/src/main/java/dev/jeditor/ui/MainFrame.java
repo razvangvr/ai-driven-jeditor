@@ -68,6 +68,8 @@ import java.util.stream.Collectors;
  */
 final class MainFrame extends JFrame {
 
+    private static final System.Logger LOG = System.getLogger(MainFrame.class.getName());
+
     private static final long MAX_FILE_BYTES = 5L * 1024 * 1024;
 
     private final JavaSourceAnalyzer analyzer = new JavaSourceAnalyzer();
@@ -178,6 +180,7 @@ final class MainFrame extends JFrame {
                     runtimes.add(current.home());
                 } catch (IllegalArgumentException | UncheckedIOException e) {
                     // not fatal: the user can add a runtime by hand
+                    LOG.log(System.Logger.Level.WARNING, "Cannot register the Java running the editor as a runtime", e);
                 }
             });
         }
@@ -215,7 +218,7 @@ final class MainFrame extends JFrame {
                 try {
                     runtimes.select(runtime);
                 } catch (UncheckedIOException ex) {
-                    error(ex.getMessage());
+                    error("Cannot save the chosen Java runtime", ex);
                 }
             }
         });
@@ -387,7 +390,12 @@ final class MainFrame extends JFrame {
             tab.focusEditor();
             return tab;
         } catch (IOException e) {
-            error("Cannot open " + normalized + "\n" + e.getMessage());
+            error("Cannot open " + normalized, e);
+            return null;
+        } catch (RuntimeException e) {
+            // Anything unforeseen while building the tab used to end here silently: the double-click
+            // simply did nothing. Say so, and keep the details.
+            error("Cannot open " + normalized + " because of an unexpected error", e);
             return null;
         }
     }
@@ -472,8 +480,13 @@ final class MainFrame extends JFrame {
         bar.add(file);
         bar.add(edit);
         bar.add(navigate);
+        JMenu help = new JMenu("Help");
+        help.setMnemonic('H');
+        help.add(action("Open Error Log", null, this::openErrorLog));
+
         bar.add(build);
         bar.add(run);
+        bar.add(help);
         return bar;
     }
 
@@ -664,7 +677,7 @@ final class MainFrame extends JFrame {
             } catch (IllegalArgumentException e) {
                 error(e.getMessage()); // and ask again, keeping what was typed
             } catch (IOException e) {
-                error("Cannot create the class:\n" + e.getMessage());
+                error("Cannot create the class:", e);
                 return;
             }
         }
@@ -698,7 +711,7 @@ final class MainFrame extends JFrame {
             } catch (IllegalArgumentException e) {
                 error(e.getMessage());
             } catch (IOException e) {
-                error("Cannot create '" + name + "':\n" + e.getMessage());
+                error("Cannot create '" + name + "':", e);
                 return;
             }
         }
@@ -728,7 +741,7 @@ final class MainFrame extends JFrame {
             } catch (IllegalArgumentException e) {
                 error(e.getMessage());
             } catch (IOException e) {
-                error("Cannot rename '" + current + "':\n" + e.getMessage());
+                error("Cannot rename '" + current + "':", e);
                 fileTree.refresh();
                 return;
             }
@@ -760,7 +773,7 @@ final class MainFrame extends JFrame {
         } catch (IllegalArgumentException e) {
             error(e.getMessage());
         } catch (IOException e) {
-            error("Cannot move '" + source.getFileName() + "':\n" + e.getMessage());
+            error("Cannot move '" + source.getFileName() + "':", e);
             fileTree.refresh();
         }
     }
@@ -774,7 +787,7 @@ final class MainFrame extends JFrame {
             } catch (IllegalArgumentException e) {
                 error(e.getMessage());
             } catch (IOException e) {
-                error("Cannot copy '" + source.getFileName() + "':\n" + e.getMessage());
+                error("Cannot copy '" + source.getFileName() + "':", e);
             }
         }
         fileTree.refresh();
@@ -836,7 +849,7 @@ final class MainFrame extends JFrame {
         try {
             FileOperations.delete(target);
         } catch (IOException e) {
-            error("Cannot delete " + name + ":\n" + e.getMessage());
+            error("Cannot delete " + name + ":", e);
         }
         if (openedFolder && !Files.exists(target)) {
             closeFolder(); // nothing left to show
@@ -856,6 +869,7 @@ final class MainFrame extends JFrame {
             paths.filter(path -> !path.equals(target)).forEach(path -> counts[Files.isDirectory(path) ? 1 : 0]++);
             return "\n\n" + describeContents(counts[0], counts[1]);
         } catch (IOException | RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "Cannot count the contents of " + target, e);
             return "";
         }
     }
@@ -920,7 +934,7 @@ final class MainFrame extends JFrame {
             tab.save();
             return true;
         } catch (IOException e) {
-            error("Cannot save " + tab.file() + "\n" + e.getMessage());
+            error("Cannot save " + tab.file(), e);
             return false;
         }
     }
@@ -1072,6 +1086,40 @@ final class MainFrame extends JFrame {
 
     private void error(String message) {
         JOptionPane.showMessageDialog(this, message, "JEditor", JOptionPane.ERROR_MESSAGE);
+    }
+
+    /** Reports a failure to the user and records it, with its stack trace, in the error log. */
+    private void error(String message, Throwable cause) {
+        LOG.log(System.Logger.Level.WARNING, message.replace('\n', ' '), cause);
+        String detail = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        error(message + "\n" + detail);
+    }
+
+    // ---- error log ----------------------------------------------------------------------------
+
+    private ErrorLog errorLog;
+
+    /** Connects the window to the error log: unexpected errors are announced in the status bar. */
+    void setErrorLog(ErrorLog log) {
+        errorLog = log;
+        log.onUnexpectedError(description -> SwingUtilities.invokeLater(() ->
+                showStatusMessage("An unexpected error was logged (Help \u2192 Open Error Log): " + description)));
+    }
+
+    private void openErrorLog() {
+        if (errorLog == null) {
+            return;
+        }
+        Path today = errorLog.todaysFile();
+        if (Files.isRegularFile(today)) {
+            EditorTab tab = openFile(today);
+            if (tab != null) {
+                tab.goTo(Integer.MAX_VALUE); // newest entries are at the end
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "Nothing has been logged today.\n\nLogs are kept in " + errorLog.directory()
+                    + "\nas errors-<date>.log, for " + ErrorLog.DAYS_KEPT + " days.", "Error Log", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     /** Tab title with an unsaved-changes marker, an error indicator and a close button. */
