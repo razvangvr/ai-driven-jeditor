@@ -13,6 +13,7 @@
 
     <modules>
         <module>jeditor-compiler</module>
+        <module>jeditor-format</module>
         <module>jeditor-ui</module>
     </modules>
 
@@ -22,6 +23,7 @@
         <junit.version>5.11.4</junit.version>
         <rsyntaxtextarea.version>3.6.0</rsyntaxtextarea.version>
         <flatlaf.version>3.5.4</flatlaf.version>
+        <jdt.core.version>3.40.0</jdt.core.version>
     </properties>
 
     <dependencyManagement>
@@ -37,6 +39,16 @@
                 <groupId>dev.jeditor</groupId>
                 <artifactId>jeditor-compiler</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.jeditor</groupId>
+                <artifactId>jeditor-format</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jdt</groupId>
+                <artifactId>org.eclipse.jdt.core</artifactId>
+                <version>${jdt.core.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fifesoft</groupId>

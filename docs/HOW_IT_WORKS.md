@@ -15,6 +15,7 @@
 | --- | --- |
 | **JDK compiler** (`javax.tools`, `com.sun.source` — part of every JDK, not a download) | Lexing, parsing, type-checking, generating class files |
 | **RSyntaxTextArea** | The text component: syntax colours, fold markers, squiggly underlines, line numbers |
+| **Eclipse JDT core** | Reformat Code: its code formatter with the built-in "Java Conventions" profile |
 | **FlatLaf** | Look and feel (window, buttons, trees) |
 | **JUnit 5** | Tests |
 
@@ -24,6 +25,7 @@
 jeditor-compiler   no UI, no third-party dependencies
   dev.jeditor.compiler       analyse a source file: errors, structure, go-to-declaration
   dev.jeditor.compiler.run   Java runtimes, build to class files, launch
+jeditor-format     reformatting; wraps the Eclipse JDT formatter
 jeditor-ui         the Swing application
 ```
 
@@ -82,6 +84,17 @@ It does not know whether an identifier is a field, a local variable or a type.
 4. The result is a file and an offset; `MainFrame` opens the file in a tab and moves the caret
    there. Symbols that exist only as class files (JDK, jars) have no file, and the status bar
    says so.
+
+## Reformatting code
+
+`JavaFormatter` (module `jeditor-format`) hands the text to the Eclipse JDT code formatter,
+configured with JDT's built-in "Java Conventions" profile — the standard Sun/Oracle style —
+plus spaces-only indentation. JDT has its own Java parser, separate from `javac`; it returns a
+list of whitespace edits, which are applied to the text. Nothing about formatting was written
+here beyond that configuration.
+
+`EditorTab` then replaces only the part of the document that actually changed, as one undo step,
+and puts the caret back in front of the character it was at.
 
 ## Building (compiling to an output directory)
 

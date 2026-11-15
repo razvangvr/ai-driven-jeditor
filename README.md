@@ -25,6 +25,8 @@ middle, and live compile-error checking as you type.
   its `package` line; right-click in the file viewer for New File/Folder, Rename and Delete.
 - **Editing basics** — Find (Ctrl+F) and Replace (Ctrl+R) in the current file, Go to Line
   (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
+- **Reformat code** — Option+Cmd+L (Ctrl+Alt+L on Windows/Linux) reformats the file, or the
+  selection, to the standard Java code conventions.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
   Enter opens the selected one. Each folder remembers its own list, in `.jeditor/recent-files.txt`
   inside the folder. Picking a file from another project opens that project's folder with it.
@@ -67,6 +69,7 @@ java -jar jeditor-ui/target/jeditor.jar /path/to/folder-or-file
 | Module | What it is |
 | --- | --- |
 | `jeditor-compiler` | The compiler component. No UI, no third-party dependencies. |
+| `jeditor-format` | Code formatting (Eclipse JDT formatter, standard Java conventions). |
 | `jeditor-ui` | The Swing application. |
 
 ### `jeditor-compiler`

@@ -20,6 +20,10 @@
             <artifactId>jeditor-compiler</artifactId>
         </dependency>
         <dependency>
+            <groupId>dev.jeditor</groupId>
+            <artifactId>jeditor-format</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.fifesoft</groupId>
             <artifactId>rsyntaxtextarea</artifactId>
         </dependency>

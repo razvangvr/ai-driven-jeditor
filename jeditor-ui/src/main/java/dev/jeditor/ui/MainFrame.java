@@ -7,6 +7,7 @@ import dev.jeditor.compiler.JavaSourceAnalyzer;
 import dev.jeditor.compiler.JavaTypeTemplate;
 import dev.jeditor.compiler.run.JavaRuntime;
 import dev.jeditor.compiler.run.RuntimeRegistry;
+import dev.jeditor.format.JavaFormatter;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
@@ -105,6 +106,11 @@ final class MainFrame extends JFrame {
     private final Action buildProjectAction = action("Build Project",
             KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), this::buildProject);
     private boolean updatingRuntimeChooser;
+
+    private final JavaFormatter formatter = new JavaFormatter();
+    /** Until this {@link System#nanoTime()}, the status bar shows a message instead of the caret's code block. */
+    private long statusMessageUntil;
+    private final javax.swing.Timer statusMessageTimer = new javax.swing.Timer(4000, e -> refreshViews());
 
     /** Recent files across all folders, with the folder each was used in (stored in the user's home). */
     private final RecentFiles allRecentFiles = RecentFiles.forCurrentUser();
@@ -389,12 +395,12 @@ final class MainFrame extends JFrame {
     /** Outcome of a "go to declaration" request: open the declaring file at the declared name. */
     private void navigateTo(Optional<DeclarationTarget> declaration) {
         if (declaration.isEmpty()) {
-            statusLeft.setText("Nothing to navigate to here.");
+            showStatusMessage("Nothing to navigate to here.");
             return;
         }
         DeclarationTarget target = declaration.get();
         if (!target.hasSource()) {
-            statusLeft.setText("No source available for " + target.name() + " (it comes from a library or the JDK).");
+            showStatusMessage("No source available for " + target.name() + " (it comes from a library or the JDK).");
             return;
         }
         EditorTab tab = openFile(target.file().get());
@@ -435,6 +441,8 @@ final class MainFrame extends JFrame {
         edit.add(action("Copy", KeyStroke.getKeyStroke(KeyEvent.VK_C, menuKey), () -> editCommand(EditorTab::copy, JTextComponent::copy)));
         edit.add(action("Paste", KeyStroke.getKeyStroke(KeyEvent.VK_V, menuKey), () -> editCommand(EditorTab::paste, JTextComponent::paste)));
         edit.add(action("Select All", KeyStroke.getKeyStroke(KeyEvent.VK_A, menuKey), () -> editCommand(EditorTab::selectAll, JTextComponent::selectAll)));
+        edit.addSeparator();
+        edit.add(action("Reformat Code", KeyStroke.getKeyStroke(KeyEvent.VK_L, menuKey | InputEvent.ALT_DOWN_MASK), this::reformatCode));
         edit.addSeparator();
         edit.add(action("Find\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_F, menuKey), () -> withCurrentTab(tab -> tab.showFind(false))));
         edit.add(action("Replace\u2026", KeyStroke.getKeyStroke(KeyEvent.VK_R, menuKey), () -> withCurrentTab(tab -> tab.showFind(true))));
@@ -511,6 +519,33 @@ final class MainFrame extends JFrame {
             return;
         }
         withCurrentTab(onEditor);
+    }
+
+    /** Reformats the selection, or the whole current file, to the standard Java code conventions. */
+    private void reformatCode() {
+        EditorTab tab = currentTab();
+        if (tab == null) {
+            return;
+        }
+        String name = tab.file().getFileName().toString();
+        tab.reformat(formatter, outcome -> showStatusMessage(switch (outcome) {
+            case REFORMATTED -> "Reformatted " + name + " (undo with " + (isMac() ? "Cmd" : "Ctrl") + "+Z).";
+            case ALREADY_FORMATTED -> name + " is already formatted.";
+            case CANNOT_FORMAT -> "Cannot reformat " + name + ": it has syntax errors the formatter cannot get past.";
+            case NOT_JAVA -> "Reformat Code works on Java files only.";
+        }));
+    }
+
+    private static boolean isMac() {
+        return System.getProperty("os.name", "").toLowerCase().contains("mac");
+    }
+
+    /** Shows a message in the status bar for a few seconds, in place of the caret's code block. */
+    private void showStatusMessage(String message) {
+        statusMessageUntil = System.nanoTime() + 3_900_000_000L;
+        statusLeft.setText(message);
+        statusMessageTimer.setRepeats(false);
+        statusMessageTimer.restart();
     }
 
     private void goToLine() {
@@ -894,7 +929,7 @@ final class MainFrame extends JFrame {
         structure.show(result.structure());
         problems.show(tab.isJava() ? tab.file().getFileName().toString() : null, result, tab.isAnalysisPending());
         statusRight.setText("Ln " + tab.caretLine() + ", Col " + tab.caretColumn());
-        if (analyzer.isAvailable()) {
+        if (analyzer.isAvailable() && System.nanoTime() >= statusMessageUntil) {
             statusLeft.setText(breadcrumb(CodeBlock.pathTo(result.structure(), tab.caretOffset())));
         }
     }

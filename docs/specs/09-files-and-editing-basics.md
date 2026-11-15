@@ -52,6 +52,6 @@ Basic-editor functions that are still missing:
 - **Reloading a file changed on disk** by another program; the editor keeps its own version and
   overwrites on save.
 - **Program arguments** for Run (also noted in spec 05).
-- **Code completion**, formatting, organise imports, rename refactoring.
+- **Code completion**, organise imports, rename refactoring. (Formatting: see [spec 11](11-reformat-code.md).)
 - **Settings**: font size, theme, tab width are fixed.
 - Regular-expression search.

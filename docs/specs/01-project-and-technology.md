@@ -14,11 +14,12 @@
 
 ## Design decisions
 
-- **Two Maven modules.** `jeditor-compiler` (all compiler-side logic, no UI, no third-party
-  dependencies) and `jeditor-ui` (the Swing application).
+- **Three Maven modules.** `jeditor-compiler` (all compiler-side logic, no UI, no third-party
+  dependencies), `jeditor-format` (code formatting) and `jeditor-ui` (the Swing application).
 - **Compiler: the JDK's own `javac`**, through the standard `javax.tools` API (TECH-6). It is
   part of every JDK, so nothing extra is downloaded, and results are identical to a real build.
 - **UI libraries**, both pure Java: RSyntaxTextArea (text component) and FlatLaf (look and feel).
+- **Formatter library:** Eclipse JDT core, also pure Java.
 - **Tests** are JUnit 5 and concentrate on `jeditor-compiler`. The UI module has tests only for
   its logic (diagnostic mapping, displayed texts), not for clicking through windows.
 - **Packaging:** `mvn package` produces one runnable jar, `jeditor-ui/target/jeditor.jar`.

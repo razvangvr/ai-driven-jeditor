@@ -53,6 +53,22 @@ class ViewTextTest {
     }
 
     @Test
+    void caretStaysInFrontOfTheSameCharacterAfterReformat() {
+        String before = "class A{int f(){return 1;}}";
+        String after = "class A {\n    int f() {\n        return 1;\n    }\n}\n";
+
+        // in front of 'r' of return
+        assertEquals(after.indexOf("return"), EditorTab.caretAfterReformat(before, before.indexOf("return"), after));
+        // inside a word
+        assertEquals(after.indexOf("turn"), EditorTab.caretAfterReformat(before, before.indexOf("turn"), after));
+        // start and end of the file
+        assertEquals(0, EditorTab.caretAfterReformat(before, 0, after));
+        assertEquals(after.lastIndexOf('}') + 1, EditorTab.caretAfterReformat(before, before.length(), after));
+        // caret in whitespace that gets removed
+        assertEquals("class A {\n    int".length(), EditorTab.caretAfterReformat("class A{int     x;}", 13, "class A {\n    int x;\n}\n"));
+    }
+
+    @Test
     void syntaxStyleFollowsFileExtension() {
         assertEquals(SyntaxConstants.SYNTAX_STYLE_JAVA, EditorTab.styleFor(Path.of("src/Main.java")));
         assertEquals(SyntaxConstants.SYNTAX_STYLE_XML, EditorTab.styleFor(Path.of("POM.XML")));

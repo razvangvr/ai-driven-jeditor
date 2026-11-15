@@ -4,6 +4,7 @@ import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CompilationDiagnostic;
 import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
+import dev.jeditor.format.JavaFormatter;
 import org.fife.ui.rsyntaxtextarea.ErrorStrip;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -236,6 +237,100 @@ final class EditorTab extends JPanel {
 
     void selectAll() {
         textArea.selectAll();
+    }
+
+    /** What a reformat request came to. */
+    enum FormatOutcome {
+        REFORMATTED, ALREADY_FORMATTED, CANNOT_FORMAT, NOT_JAVA
+    }
+
+    /**
+     * Reformats the selection, or the whole file when nothing is selected, as one undoable edit.
+     * The formatting runs off the event thread; {@code report} is then called on the event thread.
+     * If the text is edited in the meantime the result is dropped, since it no longer applies.
+     */
+    void reformat(JavaFormatter formatter, Consumer<FormatOutcome> report) {
+        if (!isJava()) {
+            report.accept(FormatOutcome.NOT_JAVA);
+            return;
+        }
+        String text = textArea.getText();
+        int selectionStart = textArea.getSelectionStart();
+        int selectionEnd = textArea.getSelectionEnd();
+        executor.submit(() -> {
+            Optional<String> result;
+            try {
+                result = selectionEnd > selectionStart
+                        ? formatter.format(text, selectionStart, selectionEnd - selectionStart)
+                        : formatter.format(text);
+            } catch (RuntimeException e) {
+                result = Optional.empty();
+            }
+            Optional<String> formatted = result;
+            SwingUtilities.invokeLater(() -> {
+                if (!textArea.getText().equals(text)) {
+                    return;
+                }
+                if (formatted.isEmpty()) {
+                    report.accept(FormatOutcome.CANNOT_FORMAT);
+                } else if (formatted.get().equals(text)) {
+                    report.accept(FormatOutcome.ALREADY_FORMATTED);
+                } else {
+                    replaceText(text, formatted.get());
+                    report.accept(FormatOutcome.REFORMATTED);
+                }
+            });
+        });
+    }
+
+    /** Swaps the document's text for {@code replacement}, touching only the part that differs, as one undo step. */
+    private void replaceText(String current, String replacement) {
+        int caret = caretAfterReformat(current, textArea.getCaretPosition(), replacement);
+        int prefix = 0;
+        int limit = Math.min(current.length(), replacement.length());
+        while (prefix < limit && current.charAt(prefix) == replacement.charAt(prefix)) {
+            prefix++;
+        }
+        int suffix = 0;
+        while (suffix < limit - prefix
+                && current.charAt(current.length() - 1 - suffix) == replacement.charAt(replacement.length() - 1 - suffix)) {
+            suffix++;
+        }
+        textArea.beginAtomicEdit();
+        try {
+            textArea.replaceRange(replacement.substring(prefix, replacement.length() - suffix), prefix, current.length() - suffix);
+        } finally {
+            textArea.endAtomicEdit();
+        }
+        textArea.setCaretPosition(Math.min(caret, textArea.getDocument().getLength()));
+    }
+
+    /**
+     * Where the caret belongs after reformatting: in front of the same character as before.
+     * Formatting only moves whitespace around, so "the same character" is found by counting the
+     * non-whitespace characters that precede the caret.
+     */
+    static int caretAfterReformat(String before, int caret, String after) {
+        int significant = 0;
+        for (int i = 0; i < Math.min(caret, before.length()); i++) {
+            if (!Character.isWhitespace(before.charAt(i))) {
+                significant++;
+            }
+        }
+        int position = 0;
+        while (position < after.length() && significant > 0) {
+            if (!Character.isWhitespace(after.charAt(position))) {
+                significant--;
+            }
+            position++;
+        }
+        // Step over the whitespace that now precedes the character the caret was in front of,
+        // unless the caret was itself sitting in whitespace at the end of a line.
+        boolean caretBeforeText = caret < before.length() && !Character.isWhitespace(before.charAt(caret));
+        while (caretBeforeText && position < after.length() && Character.isWhitespace(after.charAt(position))) {
+            position++;
+        }
+        return position;
     }
 
     void showFind(boolean withReplace) {

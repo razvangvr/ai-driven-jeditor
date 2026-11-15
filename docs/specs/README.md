@@ -14,6 +14,7 @@ The requirements for JEditor, as stated by the project owner, grouped by area.
 | [08](08-recent-files.md) | Recent files |
 | [09](09-files-and-editing-basics.md) | Creating files and basic editing |
 | [10](10-build.md) | Compiling (building) to an output directory |
+| [11](11-reformat-code.md) | Reformat code |
 
 ## How to read these
 

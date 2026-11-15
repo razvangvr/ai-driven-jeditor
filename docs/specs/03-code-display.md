@@ -30,4 +30,4 @@
 
 - **CODE-3 gap:** colouring is lexical only. It cannot tell a field from a local variable, a
   parameter or a type name, so those all look the same.
-- Code completion, formatting, refactoring.
+- Code completion, refactoring. (Formatting: see [spec 11](11-reformat-code.md).)
