@@ -26,7 +26,8 @@ middle, and live compile-error checking as you type.
 - **Editing basics** — Find (Ctrl+F) and Replace (Ctrl+R) in the current file, Go to Line
   (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
-  Enter opens the selected one.
+  Enter opens the selected one. Each folder remembers its own list, in `.jeditor/recent-files.txt`
+  inside the folder.
 - **Navigation** — Ctrl+click a type name (or Ctrl+B at the caret) to open the type's source in
   a new tab. Works for methods, fields and variables too.
 - **Run** — the ▶ button (Shift+F10) compiles the current file and runs its `main` method on the

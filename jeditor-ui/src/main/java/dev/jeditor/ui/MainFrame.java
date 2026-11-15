@@ -101,7 +101,8 @@ final class MainFrame extends JFrame {
     private final Action closeFolderAction = action("Close Folder", null, this::closeFolder);
     private boolean updatingRuntimeChooser;
 
-    private final RecentFiles recentFiles = RecentFiles.forCurrentUser();
+    /** The open folder's own list (stored inside that folder), or the per-user one while no folder is open. */
+    private RecentFiles recentFiles = RecentFiles.forCurrentUser();
     /** True while tabs are being closed in bulk, when tab selection changes are not the user's doing. */
     private boolean closingAllTabs;
 
@@ -275,7 +276,8 @@ final class MainFrame extends JFrame {
     // ---- opening ------------------------------------------------------------------------------
 
     void openFolder(Path newFolder) {
-        folder = newFolder;
+        folder = newFolder.toAbsolutePath().normalize();
+        recentFiles = RecentFiles.forFolder(folder);
         fileTree.setRoot(newFolder);
         setTitle("JEditor — " + newFolder);
         closeFolderAction.setEnabled(true);
@@ -291,6 +293,7 @@ final class MainFrame extends JFrame {
         }
         runner.stop();
         folder = null;
+        recentFiles = RecentFiles.forCurrentUser();
         fileTree.clear();
         setTitle("JEditor");
         closeFolderAction.setEnabled(false);

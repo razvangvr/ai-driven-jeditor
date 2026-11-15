@@ -10,24 +10,42 @@ import java.util.List;
 
 /**
  * The most recently used files, newest first, capped at {@link #LIMIT} and remembered between
- * sessions in a plain text file (one path per line).
+ * editor restarts in a plain text file (one path per line).
+ *
+ * <p>Each opened folder keeps its own list inside the folder itself, in
+ * {@code .jeditor/recent-files.txt}. Files inside the folder are stored relative to it, so the
+ * list stays valid when the folder is moved, renamed or copied to another machine.
  */
 final class RecentFiles {
 
     static final int LIMIT = 10;
 
+    /** Folder, inside an opened folder, where the editor keeps what it remembers about that folder. */
+    static final String SETTINGS_DIRECTORY = ".jeditor";
+
     private final Path store;
+    private final Path base;
     private final List<Path> files = new ArrayList<>();
 
-    /** Opens the list kept in {@code store}; a missing or unreadable file means an empty list. */
-    RecentFiles(Path store) {
+    /**
+     * Opens the list kept in {@code store}; a missing or unreadable file means an empty list.
+     *
+     * @param base files under this directory are stored as paths relative to it; null stores every path in full
+     */
+    RecentFiles(Path store, Path base) {
         this.store = store;
+        this.base = base == null ? null : base.toAbsolutePath().normalize();
         load();
     }
 
-    /** The per-user list in {@code ~/.jeditor/recent-files.txt}. */
+    /** The list of an opened folder, kept in {@code <folder>/.jeditor/recent-files.txt}. */
+    static RecentFiles forFolder(Path folder) {
+        return new RecentFiles(folder.resolve(SETTINGS_DIRECTORY).resolve("recent-files.txt"), folder);
+    }
+
+    /** The list used while no folder is open, kept in {@code ~/.jeditor/recent-files.txt}. */
     static RecentFiles forCurrentUser() {
-        return new RecentFiles(Path.of(System.getProperty("user.home"), ".jeditor", "recent-files.txt"));
+        return new RecentFiles(Path.of(System.getProperty("user.home"), SETTINGS_DIRECTORY, "recent-files.txt"), null);
     }
 
     /** Marks a file as just used: it moves (or is added) to the front, and the oldest entry beyond the limit drops off. */
@@ -49,6 +67,14 @@ final class RecentFiles {
         return files.stream().filter(Files::isRegularFile).toList();
     }
 
+    /** How a file is written to the store: relative to the base with '/' separators when inside it, in full otherwise. */
+    private String stored(Path file) {
+        if (base != null && file.startsWith(base)) {
+            return base.relativize(file).toString().replace('\\', '/');
+        }
+        return file.toString();
+    }
+
     private void load() {
         if (!Files.isRegularFile(store)) {
             return;
@@ -59,7 +85,8 @@ final class RecentFiles {
                     continue;
                 }
                 try {
-                    Path path = Path.of(line.strip()).toAbsolutePath().normalize();
+                    Path stored = Path.of(line.strip());
+                    Path path = (base != null && !stored.isAbsolute() ? base.resolve(stored) : stored.toAbsolutePath()).normalize();
                     if (!files.contains(path)) {
                         files.add(path);
                     }
@@ -77,7 +104,7 @@ final class RecentFiles {
             if (store.getParent() != null) {
                 Files.createDirectories(store.getParent());
             }
-            Files.write(store, files.stream().map(Path::toString).toList(), StandardCharsets.UTF_8);
+            Files.write(store, files.stream().map(this::stored).toList(), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
             // losing the recent list is not worth interrupting the user for
         }
