@@ -614,6 +614,16 @@ final class MainFrame extends JFrame {
         public void delete(Path target) {
             MainFrame.this.delete(target);
         }
+
+        @Override
+        public void move(Path source, Path directory) {
+            MainFrame.this.move(source, directory);
+        }
+
+        @Override
+        public void copyIn(List<Path> sources, Path directory) {
+            MainFrame.this.copyIn(sources, directory);
+        }
     }
 
     private void newJavaClass(Path directory) {
@@ -706,24 +716,7 @@ final class MainFrame extends JFrame {
         while ((name = (String) JOptionPane.showInputDialog(this, "New name for '" + current + "':", "Rename",
                 JOptionPane.PLAIN_MESSAGE, null, null, name)) != null) {
             try {
-                // Open tabs of the renamed file (or of files in the renamed folder) are closed, saving
-                // on request, and reopened at their new location.
-                List<Path> open = openFilesUnder(target);
-                Path selected = currentTab() == null ? null : currentTab().file();
-                for (EditorTab tab : tabsUnder(target)) {
-                    if (!close(tab)) {
-                        return;
-                    }
-                }
-                Path renamed = FileOperations.rename(target, name);
-                fileTree.refresh();
-                fileTree.reveal(renamed);
-                for (Path file : open) {
-                    openFile(FileOperations.relocated(file, target, renamed));
-                }
-                if (selected != null) {
-                    openFile(FileOperations.relocated(selected, target, renamed)); // back to the tab the user was on
-                }
+                relocate(target, FileOperations.renameDestination(target, name));
                 return;
             } catch (IllegalArgumentException e) {
                 error(e.getMessage());
@@ -732,6 +725,71 @@ final class MainFrame extends JFrame {
                 fileTree.refresh();
                 return;
             }
+        }
+    }
+
+    /** Drag and drop within the file viewer: moves a file or folder into another folder, after asking. */
+    private void move(Path source, Path directory) {
+        try {
+            Path destination = FileOperations.moveDestination(source, directory);
+            if (destination.equals(source.toAbsolutePath().normalize())) {
+                return; // dropped where it already is
+            }
+            String question = "Move '" + source.getFileName() + "' to '" + directory.getFileName() + "'?";
+            if (JOptionPane.showConfirmDialog(this, question, "Move", JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.QUESTION_MESSAGE) == JOptionPane.OK_OPTION) {
+                relocate(source, destination);
+            }
+        } catch (IllegalArgumentException e) {
+            error(e.getMessage());
+        } catch (IOException e) {
+            error("Cannot move '" + source.getFileName() + "':\n" + e.getMessage());
+            fileTree.refresh();
+        }
+    }
+
+    /** Files dragged in from outside the editor (the desktop, a file manager) are copied into the folder. */
+    private void copyIn(List<Path> sources, Path directory) {
+        Path last = null;
+        for (Path source : sources) {
+            try {
+                last = FileOperations.copyInto(source, directory);
+            } catch (IllegalArgumentException e) {
+                error(e.getMessage());
+            } catch (IOException e) {
+                error("Cannot copy '" + source.getFileName() + "':\n" + e.getMessage());
+            }
+        }
+        fileTree.refresh();
+        if (last != null) {
+            fileTree.reveal(last);
+        }
+    }
+
+    /**
+     * Moves or renames {@code source} to the already validated {@code destination}. Open tabs of
+     * the file (or of files in the folder) are closed, saving on request, and reopened at their
+     * new location.
+     */
+    private void relocate(Path source, Path destination) throws IOException {
+        if (destination.equals(source)) {
+            return;
+        }
+        List<Path> open = openFilesUnder(source);
+        Path selected = currentTab() == null ? null : currentTab().file();
+        for (EditorTab tab : tabsUnder(source)) {
+            if (!close(tab)) {
+                return; // cancelled on an unsaved file: nothing has been moved
+            }
+        }
+        Files.move(source, destination);
+        fileTree.refresh();
+        fileTree.reveal(destination);
+        for (Path file : open) {
+            openFile(FileOperations.relocated(file, source, destination));
+        }
+        if (selected != null && Files.exists(FileOperations.relocated(selected, source, destination))) {
+            openFile(FileOperations.relocated(selected, source, destination)); // back to the tab the user was on
         }
     }
 

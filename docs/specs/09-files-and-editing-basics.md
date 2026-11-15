@@ -48,7 +48,7 @@
 Basic-editor functions that are still missing:
 
 - **Search across files** (find in project).
-- **Save As**, and moving a file to another folder (drag and drop or cut/paste in the file viewer).
+- **Save As**. (Moving a file to another folder: see [spec 12](12-drag-and-drop.md).)
 - **Reloading a file changed on disk** by another program; the editor keeps its own version and
   overwrites on save.
 - **Program arguments** for Run (also noted in spec 05).

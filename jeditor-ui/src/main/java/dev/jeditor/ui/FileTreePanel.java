@@ -1,10 +1,13 @@
 package dev.jeditor.ui;
 
 import javax.swing.BorderFactory;
+import javax.swing.DropMode;
+import javax.swing.JComponent;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
+import javax.swing.TransferHandler;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
@@ -17,10 +20,14 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +57,12 @@ final class FileTreePanel extends JPanel {
         void rename(Path fileOrDirectory);
 
         void delete(Path fileOrDirectory);
+
+        /** A file or folder of the tree was dropped onto a folder of the tree. */
+        void move(Path fileOrDirectory, Path directory);
+
+        /** Files from outside the editor were dropped onto a folder of the tree. */
+        void copyIn(List<Path> files, Path directory);
     }
 
     private final JTree tree = new JTree(new DefaultTreeModel(null));
@@ -64,6 +77,9 @@ final class FileTreePanel extends JPanel {
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         tree.setCellRenderer(new FileRenderer());
+        tree.setDragEnabled(true);
+        tree.setDropMode(DropMode.ON);
+        tree.setTransferHandler(new FileDropHandler());
         tree.addTreeWillExpandListener(new TreeWillExpandListener() {
             @Override
             public void treeWillExpand(TreeExpansionEvent event) {
@@ -227,6 +243,99 @@ final class FileTreePanel extends JPanel {
             path = path.pathByAddingChild(node);
         }
         return path;
+    }
+
+    /**
+     * Drag and drop. Dragging a file or folder of the tree onto a folder moves it there; files
+     * dragged in from outside the editor are copied. Dropping onto a file means "into its folder",
+     * and dropping onto empty space means the opened folder.
+     */
+    private final class FileDropHandler extends TransferHandler {
+        /** What is being dragged out of this tree; null when the drag started elsewhere. */
+        private Path dragged;
+
+        @Override
+        public int getSourceActions(JComponent component) {
+            return MOVE;
+        }
+
+        @Override
+        protected Transferable createTransferable(JComponent component) {
+            Path selected = selectedPath();
+            if (selected == null || selected.equals(root)) {
+                return null; // the opened folder itself cannot be dragged
+            }
+            dragged = selected;
+            List<File> files = List.of(selected.toFile());
+            return new Transferable() {
+                @Override
+                public DataFlavor[] getTransferDataFlavors() {
+                    return new DataFlavor[] {DataFlavor.javaFileListFlavor};
+                }
+
+                @Override
+                public boolean isDataFlavorSupported(DataFlavor flavor) {
+                    return DataFlavor.javaFileListFlavor.equals(flavor);
+                }
+
+                @Override
+                public Object getTransferData(DataFlavor flavor) {
+                    return files;
+                }
+            };
+        }
+
+        @Override
+        protected void exportDone(JComponent source, Transferable data, int action) {
+            dragged = null; // the move itself was done by importData, through the application
+        }
+
+        @Override
+        public boolean canImport(TransferSupport support) {
+            if (root == null || !support.isDrop() || !support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                return false;
+            }
+            Path directory = dropDirectory(support);
+            // Refuse the obviously pointless drops up front, so the cursor shows "not here".
+            return directory != null && (dragged == null
+                    || (!directory.equals(dragged.getParent()) && !directory.startsWith(dragged)));
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) {
+                return false;
+            }
+            Path directory = dropDirectory(support);
+            Path source = dragged;
+            try {
+                @SuppressWarnings("unchecked")
+                List<File> files = (List<File>) support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                List<Path> paths = files.stream().map(File::toPath).toList();
+                // Let the drag finish before any dialog opens.
+                SwingUtilities.invokeLater(() -> {
+                    if (source != null) {
+                        actions.move(source, directory);
+                    } else {
+                        actions.copyIn(paths, directory);
+                    }
+                });
+                return true;
+            } catch (UnsupportedFlavorException | IOException e) {
+                return false;
+            }
+        }
+
+        private Path dropDirectory(TransferSupport support) {
+            TreePath path = ((JTree.DropLocation) support.getDropLocation()).getPath();
+            if (path == null) {
+                return root;
+            }
+            if (path.getLastPathComponent() instanceof FileNode node) {
+                return node.directory ? node.path : node.path.getParent();
+            }
+            return null;
+        }
     }
 
     private void maybeShowMenu(MouseEvent e) {

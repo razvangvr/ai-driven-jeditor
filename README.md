@@ -22,7 +22,8 @@ middle, and live compile-error checking as you type.
   the block the caret is in and the lines it spans.
 
 - **Files** — *New Java Class* (toolbar, Ctrl+N) creates a class, interface, enum or record with
-  its `package` line; right-click in the file viewer for New File/Folder, Rename and Delete.
+  its `package` line; right-click in the file viewer for New File/Folder, Rename and Delete;
+  drag a file or folder onto a folder to move it.
 - **Editing basics** — Find (Ctrl+F) and Replace (Ctrl+R) in the current file, Go to Line
   (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
 - **Reformat code** — Option+Cmd+L (Ctrl+Alt+L on Windows/Linux) reformats the file, or the

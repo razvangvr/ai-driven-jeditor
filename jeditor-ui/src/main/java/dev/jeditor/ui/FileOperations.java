@@ -41,19 +41,73 @@ final class FileOperations {
 
     /** Renames a file or folder within its parent folder and returns its new path. */
     static Path rename(Path target, String newName) throws IOException {
+        Path renamed = renameDestination(target, newName);
+        return renamed.equals(target) ? target : Files.move(target, renamed);
+    }
+
+    /** Where {@link #rename} would put {@code target}; checks the new name without touching anything. */
+    static Path renameDestination(Path target, String newName) throws IOException {
         List<String> segments = segments(newName);
         if (segments.size() != 1) {
             throw new IllegalArgumentException("A new name cannot contain '/'.");
         }
         Path renamed = target.resolveSibling(segments.get(0));
-        if (renamed.equals(target)) {
-            return target;
-        }
         // Allow a pure change of letter case on case-insensitive file systems, where the "other" file is this one.
-        if (Files.exists(renamed) && !Files.isSameFile(renamed, target)) {
+        if (!renamed.equals(target) && Files.exists(renamed) && !Files.isSameFile(renamed, target)) {
             throw new IllegalArgumentException("'" + segments.get(0) + "' already exists.");
         }
-        return Files.move(target, renamed);
+        return renamed;
+    }
+
+    /** Moves a file, or a folder with its contents, into {@code directory}, keeping its name. Returns its new path. */
+    static Path moveInto(Path source, Path directory) throws IOException {
+        Path destination = moveDestination(source, directory);
+        return destination.equals(source) ? source : Files.move(source, destination);
+    }
+
+    /**
+     * Where {@link #moveInto} would put {@code source}; checks the move without touching anything.
+     * Equal to {@code source} when it is already in {@code directory}.
+     */
+    static Path moveDestination(Path source, Path directory) {
+        Path from = source.toAbsolutePath().normalize();
+        Path into = directory.toAbsolutePath().normalize();
+        if (!Files.isDirectory(into)) {
+            throw new IllegalArgumentException("'" + into.getFileName() + "' is not a folder.");
+        }
+        if (into.startsWith(from)) {
+            throw new IllegalArgumentException("A folder cannot be moved into itself.");
+        }
+        Path destination = into.resolve(from.getFileName());
+        if (!destination.equals(from) && Files.exists(destination)) {
+            throw new IllegalArgumentException("'" + into.getFileName() + "' already contains '" + from.getFileName() + "'.");
+        }
+        return destination;
+    }
+
+    /**
+     * Copies a file, or a folder with its contents, into {@code directory}, keeping its name.
+     * Never overwrites. Returns the path of the copy.
+     */
+    static Path copyInto(Path source, Path directory) throws IOException {
+        Path from = source.toAbsolutePath().normalize();
+        Path into = directory.toAbsolutePath().normalize();
+        if (!Files.isDirectory(into)) {
+            throw new IllegalArgumentException("'" + into.getFileName() + "' is not a folder.");
+        }
+        if (into.startsWith(from)) {
+            throw new IllegalArgumentException("A folder cannot be copied into itself.");
+        }
+        Path destination = into.resolve(from.getFileName().toString());
+        if (Files.exists(destination)) {
+            throw new IllegalArgumentException("'" + into.getFileName() + "' already contains '" + from.getFileName() + "'.");
+        }
+        try (Stream<Path> paths = Files.walk(from)) {
+            for (Path path : paths.toList()) { // parents come before their children
+                Files.copy(path, destination.resolve(from.relativize(path).toString()));
+            }
+        }
+        return destination;
     }
 
     /** True if {@link #delete} moves things to the system trash rather than erasing them. */

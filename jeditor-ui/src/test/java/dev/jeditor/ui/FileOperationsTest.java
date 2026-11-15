@@ -78,6 +78,81 @@ class FileOperationsTest {
         assertEquals(a, FileOperations.rename(a, "a.txt"), "same name is a no-op");
     }
 
+    // ---- moving and copying (drag and drop) ---------------------------------------------------
+
+    @Test
+    void movesAFileIntoAFolder() throws IOException {
+        Path file = FileOperations.createFile(dir, "Loose.java", "class Loose {}");
+        Path folder = FileOperations.createFolder(dir, "pkg");
+
+        Path moved = FileOperations.moveInto(file, folder);
+
+        assertEquals(folder.resolve("Loose.java"), moved);
+        assertFalse(Files.exists(file));
+        assertEquals("class Loose {}", Files.readString(moved));
+    }
+
+    @Test
+    void movesAFolderWithItsContents() throws IOException {
+        FileOperations.createFile(dir, "a/deep/File.txt", "x");
+        Path target = FileOperations.createFolder(dir, "b");
+
+        Path moved = FileOperations.moveInto(dir.resolve("a"), target);
+
+        assertEquals(target.resolve("a"), moved);
+        assertTrue(Files.isRegularFile(target.resolve("a/deep/File.txt")));
+        assertFalse(Files.exists(dir.resolve("a")));
+    }
+
+    @Test
+    void movingToWhereItAlreadyIsDoesNothing() throws IOException {
+        Path file = FileOperations.createFile(dir, "pkg/Same.java", "x");
+        assertEquals(file, FileOperations.moveDestination(file, dir.resolve("pkg")));
+        assertEquals(file, FileOperations.moveInto(file, dir.resolve("pkg")));
+        assertEquals("x", Files.readString(file));
+    }
+
+    @Test
+    void refusesMovesThatWouldOverwriteOrMakeNoSense() throws IOException {
+        Path file = FileOperations.createFile(dir, "A.java", "mine");
+        FileOperations.createFile(dir, "taken/A.java", "theirs");
+        Path folder = FileOperations.createFolder(dir, "outer/inner");
+
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.moveInto(file, dir.resolve("taken")));
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.moveInto(dir.resolve("outer"), folder),
+                "a folder into its own subfolder");
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.moveInto(dir.resolve("outer"), dir.resolve("outer")),
+                "a folder into itself");
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.moveInto(file, dir.resolve("taken/A.java")),
+                "onto a file");
+        assertEquals("mine", Files.readString(file));
+        assertEquals("theirs", Files.readString(dir.resolve("taken/A.java")));
+        assertTrue(Files.isDirectory(folder));
+    }
+
+    @Test
+    void siblingFoldersWithACommonNamePrefixAreNotMistakenForNesting() throws IOException {
+        Path src = FileOperations.createFolder(dir, "src");
+        Path srcOld = FileOperations.createFolder(dir, "src-old");
+        assertEquals(srcOld.resolve("src"), FileOperations.moveInto(src, srcOld));
+    }
+
+    @Test
+    void copiesFilesAndFoldersWithoutTouchingTheOriginal() throws IOException {
+        Path file = FileOperations.createFile(dir, "outside/Note.txt", "note");
+        FileOperations.createFile(dir, "outside/tree/a/b.txt", "b");
+        Path target = FileOperations.createFolder(dir, "project");
+
+        assertEquals(target.resolve("Note.txt"), FileOperations.copyInto(file, target));
+        assertEquals(target.resolve("tree"), FileOperations.copyInto(dir.resolve("outside/tree"), target));
+
+        assertEquals("note", Files.readString(target.resolve("Note.txt")));
+        assertEquals("b", Files.readString(target.resolve("tree/a/b.txt")));
+        assertTrue(Files.exists(file), "the original stays");
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.copyInto(file, target), "never overwrites");
+        assertThrows(IllegalArgumentException.class, () -> FileOperations.copyInto(dir.resolve("outside"), dir.resolve("outside/tree")));
+    }
+
     @Test
     void deletesFolderWithEverythingInIt() throws IOException {
         FileOperations.createFile(dir, "top/mid/leaf.txt", "x");

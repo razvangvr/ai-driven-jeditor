@@ -15,6 +15,7 @@ The requirements for JEditor, as stated by the project owner, grouped by area.
 | [09](09-files-and-editing-basics.md) | Creating files and basic editing |
 | [10](10-build.md) | Compiling (building) to an output directory |
 | [11](11-reformat-code.md) | Reformat code |
+| [12](12-drag-and-drop.md) | Drag and drop in the file viewer |
 
 ## How to read these
 
