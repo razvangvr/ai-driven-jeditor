@@ -44,6 +44,33 @@ final class Icons {
         };
     }
 
+    /** Green "play" triangle. */
+    static Icon run() {
+        return new Base() {
+            @Override
+            void paint(Graphics2D g) {
+                Path2D triangle = new Path2D.Float();
+                triangle.moveTo(2.5f, 1f);
+                triangle.lineTo(SIZE - 1.5f, SIZE / 2f);
+                triangle.lineTo(2.5f, SIZE - 1f);
+                triangle.closePath();
+                g.setColor(new Color(0x3C9A4B));
+                g.fill(triangle);
+            }
+        };
+    }
+
+    /** Red "stop" square. */
+    static Icon stop() {
+        return new Base() {
+            @Override
+            void paint(Graphics2D g) {
+                g.setColor(new Color(0xD64545));
+                g.fillRoundRect(2, 2, SIZE - 4, SIZE - 4, 3, 3);
+            }
+        };
+    }
+
     private abstract static class Base implements Icon {
         @Override
         public int getIconWidth() {

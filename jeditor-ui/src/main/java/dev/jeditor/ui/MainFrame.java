@@ -3,11 +3,17 @@ package dev.jeditor.ui;
 import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CodeBlock;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
+import dev.jeditor.compiler.run.JavaRuntime;
+import dev.jeditor.compiler.run.RuntimeRegistry;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -16,11 +22,14 @@ import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
+import javax.swing.JList;
 import javax.swing.JTabbedPane;
+import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.ToolTipManager;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Insets;
@@ -31,6 +40,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,8 +50,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
- * The editor window: file tree and structure on the left, editor tabs in the middle, problems at
- * the bottom.
+ * The editor window: file tree and structure on the left, editor tabs in the middle, problems and
+ * the run console at the bottom, and a toolbar to run the current file on a chosen Java runtime.
  */
 final class MainFrame extends JFrame {
 
@@ -60,6 +70,15 @@ final class MainFrame extends JFrame {
     private final ProblemsPanel problems = new ProblemsPanel(d -> withCurrentTab(tab -> tab.goTo(d.startOffset())));
     private final JLabel statusLeft = new JLabel(" ");
     private final JLabel statusRight = new JLabel(" ");
+
+    private final RuntimeRegistry runtimes = RuntimeRegistry.forCurrentUser();
+    private final ConsolePanel console = new ConsolePanel();
+    private final RunController runner = new RunController(console, analyzer, this::refreshRunActions);
+    private final JTabbedPane bottomTabs = new JTabbedPane();
+    private final JComboBox<JavaRuntime> runtimeChooser = new JComboBox<>();
+    private final Action runAction = action("Run Main Class", KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK), this::runCurrentFile);
+    private final Action stopAction = action("Stop", KeyStroke.getKeyStroke(KeyEvent.VK_F2, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), runner::stop);
+    private boolean updatingRuntimeChooser;
 
     private Path folder;
 
@@ -83,8 +102,10 @@ final class MainFrame extends JFrame {
         JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, fileTree, structure);
         left.setResizeWeight(0.6);
         left.setBorder(null);
-        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tabs, problems);
-        right.setResizeWeight(0.78);
+        bottomTabs.addTab("Problems", problems);
+        bottomTabs.addTab("Console", console);
+        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tabs, bottomTabs);
+        right.setResizeWeight(0.72);
         right.setBorder(null);
         JSplitPane main = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
         main.setDividerLocation(270);
@@ -96,6 +117,7 @@ final class MainFrame extends JFrame {
         status.add(statusRight, BorderLayout.LINE_END);
 
         setJMenuBar(createMenuBar());
+        add(createToolBar(), BorderLayout.NORTH);
         add(main, BorderLayout.CENTER);
         add(status, BorderLayout.SOUTH);
         setSize(1280, 820);
@@ -105,6 +127,108 @@ final class MainFrame extends JFrame {
         if (!analyzer.isAvailable()) {
             statusLeft.setText("No Java compiler found: run JEditor on a JDK (not a JRE) to get error checking.");
         }
+
+        // Out of the box, programs run on the Java the editor itself runs on.
+        if (runtimes.runtimes().isEmpty()) {
+            JavaRuntime.current().ifPresent(current -> {
+                try {
+                    runtimes.add(current.home());
+                } catch (IllegalArgumentException | UncheckedIOException e) {
+                    // not fatal: the user can add a runtime by hand
+                }
+            });
+        }
+        refreshRuntimeChooser();
+        refreshRunActions();
+    }
+
+    // ---- running ------------------------------------------------------------------------------
+
+    private JToolBar createToolBar() {
+        runAction.putValue(Action.SMALL_ICON, Icons.run());
+        runAction.putValue(Action.SHORT_DESCRIPTION, "Run the main class of the current file (Shift+F10)");
+        stopAction.putValue(Action.SMALL_ICON, Icons.stop());
+        stopAction.putValue(Action.SHORT_DESCRIPTION, "Stop the running program");
+
+        runtimeChooser.setToolTipText("Java runtime used to run programs");
+        runtimeChooser.setMaximumSize(new Dimension(260, 28));
+        runtimeChooser.setPreferredSize(new Dimension(220, 28));
+        runtimeChooser.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+                super.getListCellRendererComponent(list, value, index, selected, focus);
+                if (value instanceof JavaRuntime runtime) {
+                    setText(runtime.displayName());
+                    setToolTipText(runtime.home().toString());
+                } else {
+                    setText("No Java runtime");
+                }
+                return this;
+            }
+        });
+        runtimeChooser.addActionListener(e -> {
+            if (!updatingRuntimeChooser && runtimeChooser.getSelectedItem() instanceof JavaRuntime runtime) {
+                try {
+                    runtimes.select(runtime);
+                } catch (UncheckedIOException ex) {
+                    error(ex.getMessage());
+                }
+            }
+        });
+
+        JToolBar bar = new JToolBar();
+        bar.setFloatable(false);
+        bar.add(Box.createHorizontalGlue());
+        bar.add(runtimeChooser);
+        bar.addSeparator(new Dimension(6, 0));
+        bar.add(new JButton(runAction)).setFocusable(false);
+        bar.add(new JButton(stopAction)).setFocusable(false);
+        bar.addSeparator(new Dimension(6, 0));
+        for (Component component : bar.getComponents()) {
+            if (component instanceof JButton button) {
+                button.setHideActionText(true);
+            }
+        }
+        return bar;
+    }
+
+    private void refreshRuntimeChooser() {
+        updatingRuntimeChooser = true;
+        runtimeChooser.setModel(new DefaultComboBoxModel<>(runtimes.runtimes().toArray(JavaRuntime[]::new)));
+        runtimeChooser.setSelectedItem(runtimes.selected().orElse(null));
+        updatingRuntimeChooser = false;
+    }
+
+    private void refreshRunActions() {
+        runAction.setEnabled(!runner.isBusy());
+        stopAction.setEnabled(runner.isBusy());
+    }
+
+    private void manageRuntimes() {
+        new RuntimesDialog(this, runtimes).setVisible(true);
+        refreshRuntimeChooser();
+    }
+
+    private void runCurrentFile() {
+        EditorTab tab = currentTab();
+        if (tab == null || !tab.isJava()) {
+            error("Open the Java file whose main method you want to run.");
+            return;
+        }
+        if (runtimes.selected().isEmpty()) {
+            manageRuntimes();
+            if (runtimes.selected().isEmpty()) {
+                return;
+            }
+        }
+        // Like any IDE: what runs is what is on disk, so save first.
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            if (tabAt(i).isDirty() && !save(tabAt(i))) {
+                return;
+            }
+        }
+        bottomTabs.setSelectedComponent(console);
+        runner.run(tab.file(), folder != null ? folder : tab.file().getParent(), runtimes.selected().get());
     }
 
     // ---- opening ------------------------------------------------------------------------------
@@ -161,8 +285,16 @@ final class MainFrame extends JFrame {
         file.addSeparator();
         file.add(action("Exit", null, this::exit));
 
+        JMenu run = new JMenu("Run");
+        run.setMnemonic('R');
+        run.add(runAction);
+        run.add(stopAction);
+        run.addSeparator();
+        run.add(action("Java Runtimes\u2026", null, this::manageRuntimes));
+
         JMenuBar bar = new JMenuBar();
         bar.add(file);
+        bar.add(run);
         return bar;
     }
 
@@ -238,6 +370,7 @@ final class MainFrame extends JFrame {
                 return;
             }
         }
+        runner.stop();
         compilerThread.shutdownNow();
         dispose();
         System.exit(0);

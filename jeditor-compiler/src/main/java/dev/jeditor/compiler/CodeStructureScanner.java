@@ -10,9 +10,11 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.SourcePositions;
 
+import javax.lang.model.element.Modifier;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +27,7 @@ final class CodeStructureScanner {
     private final CompilationUnitTree unit;
     private final SourcePositions positions;
     private final LineMap lineMap;
+    private final List<String> mainClasses = new ArrayList<>();
 
     CodeStructureScanner(CompilationUnitTree unit, SourcePositions positions) {
         this.unit = unit;
@@ -34,15 +37,34 @@ final class CodeStructureScanner {
 
     List<CodeBlock> scan() {
         List<CodeBlock> result = new ArrayList<>();
+        mainClasses.clear();
+        String packagePrefix = unit.getPackageName() == null ? "" : unit.getPackageName() + ".";
         for (Tree declaration : unit.getTypeDecls()) {
             if (declaration instanceof ClassTree type) {
-                addIfPositioned(result, type(type));
+                addIfPositioned(result, type(type, packagePrefix));
             }
         }
         return result;
     }
 
-    private CodeBlock type(ClassTree type) {
+    /** Binary names of the classes with a runnable {@code main}; valid after {@link #scan()}. */
+    List<String> mainClasses() {
+        return List.copyOf(mainClasses);
+    }
+
+    private static boolean isMainMethod(MethodTree method) {
+        if (!method.getName().contentEquals("main")
+                || !method.getModifiers().getFlags().containsAll(Set.of(Modifier.PUBLIC, Modifier.STATIC))
+                || !"void".equals(String.valueOf(method.getReturnType()))
+                || method.getParameters().size() != 1) {
+            return false;
+        }
+        String parameter = String.valueOf(method.getParameters().get(0).getType());
+        return parameter.matches("(java\\.lang\\.)?String(\\[]|\\.\\.\\.)");
+    }
+
+    /** @param binaryPrefix what precedes this type's simple name in its binary name: {@code "pkg."} or {@code "pkg.Outer$"} */
+    private CodeBlock type(ClassTree type, String binaryPrefix) {
         CodeBlock.Kind kind = switch (type.getKind()) {
             case INTERFACE -> CodeBlock.Kind.INTERFACE;
             case ENUM -> CodeBlock.Kind.ENUM;
@@ -54,12 +76,16 @@ final class CodeStructureScanner {
         List<CodeBlock> children = new ArrayList<>();
         for (Tree member : type.getMembers()) {
             CodeBlock child = switch (member) {
-                case ClassTree nested -> type(nested);
+                case ClassTree nested -> type(nested, binaryPrefix + typeName + "$");
                 case MethodTree method -> method(method, typeName);
                 case VariableTree variable -> variable(variable, kind, typeName);
                 case BlockTree block -> block(block, block.isStatic() ? "static {...}" : "{...}");
                 default -> null;
             };
+            if (member instanceof MethodTree method && isMainMethod(method)
+                    && !mainClasses.contains(binaryPrefix + typeName)) {
+                mainClasses.add(binaryPrefix + typeName);
+            }
             addIfPositioned(children, child);
         }
         return block(type, kind, typeName, children);

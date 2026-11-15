@@ -82,6 +82,7 @@ public final class JavaSourceAnalyzer {
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
         InMemorySource unit = new InMemorySource(file, source);
         List<CodeBlock> structure = List.of();
+        List<String> mainClasses = List.of();
 
         try (StandardJavaFileManager files = compiler.getStandardFileManager(collector, Locale.ENGLISH, StandardCharsets.UTF_8)) {
             // Set both explicitly: by default javac would use the editor's own classpath.
@@ -94,7 +95,9 @@ public final class JavaSourceAnalyzer {
                 Iterable<? extends CompilationUnitTree> parsed = task.parse();
                 // Structure must be read before analyze(), which adds synthetic members to the trees.
                 for (CompilationUnitTree tree : parsed) {
-                    structure = new CodeStructureScanner(tree, Trees.instance(task).getSourcePositions()).scan();
+                    CodeStructureScanner scanner = new CodeStructureScanner(tree, Trees.instance(task).getSourcePositions());
+                    structure = scanner.scan();
+                    mainClasses = scanner.mainClasses();
                 }
                 task.analyze();
             } catch (RuntimeException | IOException e) {
@@ -113,7 +116,7 @@ public final class JavaSourceAnalyzer {
         }
         diagnostics.sort(Comparator.comparingInt(CompilationDiagnostic::startOffset)
                 .thenComparing(CompilationDiagnostic::severity));
-        return new AnalysisResult(diagnostics, structure);
+        return new AnalysisResult(diagnostics, structure, mainClasses);
     }
 
     private static CompilationDiagnostic convert(Diagnostic<? extends JavaFileObject> diagnostic, String source) {

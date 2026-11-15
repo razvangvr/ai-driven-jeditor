@@ -20,7 +20,7 @@ class ViewTextTest {
         AnalysisResult result = new AnalysisResult(List.of(
                 new CompilationDiagnostic(Severity.ERROR, "a", 1, 1, 0, 1, "x"),
                 new CompilationDiagnostic(Severity.WARNING, "b", 1, 1, 0, 1, "x"),
-                new CompilationDiagnostic(Severity.WARNING, "c", 1, 1, 0, 1, "x")), List.of());
+                new CompilationDiagnostic(Severity.WARNING, "c", 1, 1, 0, 1, "x")), List.of(), List.of());
         assertEquals("Problems — A.java: 1 error, 2 warnings", ProblemsPanel.headerText("A.java", result, false));
     }
 

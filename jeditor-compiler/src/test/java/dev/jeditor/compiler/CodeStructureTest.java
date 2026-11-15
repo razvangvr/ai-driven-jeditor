@@ -166,6 +166,36 @@ class CodeStructureTest {
     }
 
     @Test
+    void mainClassesAreReportedByBinaryName() {
+        AnalysisResult result = analyzer.analyze(Path.of("App.java"), """
+                package com.acme;
+                public class App {
+                    public static void main(String[] args) {}
+                    static class Tool {
+                        static public void main(String... args) {}
+                    }
+                }
+                class NotRunnable {
+                    static void main(String[] args) {}          // not public
+                    public void main(String[] args, int x) {}   // wrong signature
+                }
+                class WrongType {
+                    public static int main(String[] args) { return 0; }
+                    public static void main(int[] args) {}
+                }
+                """, ProjectLayout.NONE);
+        assertEquals(List.of("com.acme.App", "com.acme.App$Tool"), result.mainClasses());
+    }
+
+    @Test
+    void mainClassInUnnamedPackage() {
+        AnalysisResult result = analyzer.analyze(Path.of("Hello.java"),
+                "class Hello { public static void main(java.lang.String[] a) {} }", ProjectLayout.NONE);
+        assertEquals(List.of("Hello"), result.mainClasses());
+        assertEquals(List.of(), analyzer.analyze(Path.of("A.java"), "class A {}", ProjectLayout.NONE).mainClasses());
+    }
+
+    @Test
     void pathToFindsEnclosingBlocksOutermostFirst() {
         String source = """
                 class A {

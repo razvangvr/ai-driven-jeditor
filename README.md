@@ -20,6 +20,14 @@ middle, and live compile-error checking as you type.
   ends; the **Structure** panel outlines types and members (click to navigate); the status bar shows
   the block the caret is in and the lines it spans.
 
+- **Run** — the ▶ button (Shift+F10) compiles the current file and runs its `main` method on the
+  Java runtime chosen in the toolbar; output appears in the **Console** tab, which also accepts
+  input. Add any installed JRE or JDK (Java 8+) under *Run → Java Runtimes…*.
+
+![Running a main class](docs/screenshot-run.png)
+
+**How it all works, in a few pages: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).**
+
 ## Build and run
 
 Requires a **JDK 21+** (a JDK, not a JRE: the editor uses the JDK's own compiler) and Maven.
@@ -54,6 +62,8 @@ result.structure();    // tree of types/methods/fields with their source ranges
 
 - Source is analysed from memory; nothing is written to disk (no class files are generated).
 - Syntax, type and flow errors are reported together in one pass.
+- The `run` sub-package finds Java installations (`JavaRuntime`, `RuntimeRegistry`), compiles a
+  program for a chosen runtime (`ProgramBuilder`) and starts it (`JavaLauncher`).
 - `ProjectLayout` works out where other classes live: the source root implied by the `package`
   declaration, and for Maven projects `src/main/java`, `src/test/java`, `target/classes` of the
   module and its sibling modules, plus jars in `target/dependency` or `lib`.
@@ -80,4 +90,5 @@ mvn test
 ```
 
 The compiler module carries the bulk of the tests: diagnostics and their exact positions, warnings,
-cross-file resolution, project layout detection and structure extraction.
+cross-file resolution, project layout detection, structure extraction, runtime detection, and
+building and actually running programs.
