@@ -5,6 +5,7 @@ import dev.jeditor.compiler.ProjectLayout;
 import dev.jeditor.compiler.run.BuildPlanner;
 import dev.jeditor.compiler.run.JavaLauncher;
 import dev.jeditor.compiler.run.JavaRuntime;
+import dev.jeditor.compiler.run.JvmInfo;
 import dev.jeditor.compiler.run.LaunchRecord;
 import dev.jeditor.compiler.run.ProgramBuilder;
 
@@ -48,13 +49,18 @@ final class RunController {
     private Path outputDir;
 
     private final Consumer<LaunchRecord> onLaunch;
+    private final Consumer<JvmInfo> onJvmInfo;
 
     /**
      * @param onStateChange called on the event thread whenever {@link #isBusy()} changes
      * @param onLaunch      called on the event thread when a program is started, and again with the
      *                      completed record when it ends
+     * @param onJvmInfo     called on the event thread with the running program's memory figures:
+     *                      when it starts, about once a second while it runs, and when it ends
      */
-    RunController(ConsolePanel console, JavaSourceAnalyzer analyzer, Runnable onStateChange, Consumer<LaunchRecord> onLaunch) {
+    RunController(ConsolePanel console, JavaSourceAnalyzer analyzer, Runnable onStateChange,
+                  Consumer<LaunchRecord> onLaunch, Consumer<JvmInfo> onJvmInfo) {
+        this.onJvmInfo = onJvmInfo;
         this.console = console;
         this.analyzer = analyzer;
         this.onStateChange = onStateChange;
@@ -188,6 +194,7 @@ final class RunController {
         Process started = JavaLauncher.start(runtime, classpath, mainClass, List.of(), workingDirectory);
         process = started;
         console.setProgramInput(started.getOutputStream());
+        Thread memoryWatcher = watchMemory(started, mainClass, runtime);
         try (Reader reader = new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8)) {
             char[] buffer = new char[8192];
             int read;
@@ -198,9 +205,66 @@ final class RunController {
             // stream closed because the process was killed; the exit code below tells the story
         }
         int exitCode = started.waitFor();
+        memoryWatcher.join(3000); // let it publish the final figures before the next run could start
         LaunchRecord finished = launch.finished(exitCode, java.time.Duration.ofNanos(System.nanoTime() - startedAt));
         SwingUtilities.invokeLater(() -> onLaunch.accept(finished));
         console.append(INFO, "\nProcess finished with exit code " + exitCode + "\n");
+    }
+
+    /**
+     * Follows the memory use of a running program on a thread of its own, so that neither the
+     * launch nor the output is held up: publishes the machine's and the runtime's figures at once,
+     * then connects to the program's JVM and reads its heap once a second until it ends.
+     */
+    private Thread watchMemory(Process program, String mainClass, JavaRuntime runtime) {
+        Thread thread = new Thread(() -> {
+            JvmInfo info = new JvmInfo(mainClass, runtime, program.pid(), JvmInfo.SystemInfo.read(), null, null, 0, true);
+            publish(info);
+            // Asking the runtime for its limits starts a second, short-lived JVM; not on the launch path.
+            info = new JvmInfo(mainClass, runtime, program.pid(), info.system(), JvmInfo.HeapSettings.of(runtime).orElse(null), null, 0, true);
+            publish(info);
+
+            JvmInfo.Monitor monitor = null;
+            try {
+                // A JVM accepts connections only a moment after it starts: retry briefly.
+                for (int attempt = 0; monitor == null && program.isAlive() && attempt < 20; attempt++) {
+                    try {
+                        monitor = JvmInfo.Monitor.attach(program.pid());
+                    } catch (IOException e) {
+                        if (attempt == 19) {
+                            LOG.log(System.Logger.Level.WARNING, "Cannot read the memory use of " + mainClass
+                                    + " (process " + program.pid() + ")", e);
+                        }
+                        Thread.sleep(150);
+                    }
+                }
+                while (monitor != null && program.isAlive()) {
+                    try {
+                        info = info.with(monitor.read(), true);
+                        publish(info);
+                    } catch (IOException e) {
+                        break; // the program is ending
+                    }
+                    program.waitFor(1, java.util.concurrent.TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException | Error e) {
+                LOG.log(System.Logger.Level.ERROR, "Reading the memory use of " + mainClass + " failed", e);
+            } finally {
+                if (monitor != null) {
+                    monitor.close();
+                }
+                publish(info.with(null, false));
+            }
+        }, "jeditor-memory-watch");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private void publish(JvmInfo info) {
+        SwingUtilities.invokeLater(() -> onJvmInfo.accept(info));
     }
 
     /** An empty directory for class files, so classes of earlier runs can never leak into this one. */

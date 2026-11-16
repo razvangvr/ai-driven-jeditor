@@ -129,6 +129,9 @@ public final class JavaTypeTemplate {
     }
 
     private static Optional<Path> sourceRootFromSourcesIn(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return Optional.empty(); // a package folder that does not exist yet: normal, nothing to report
+        }
         try (Stream<Path> files = Files.list(dir)) {
             for (Path file : files.filter(f -> f.getFileName().toString().endsWith(".java")).sorted().toList()) {
                 Optional<String> declared = PackageNameExtractor.extract(Files.readString(file));

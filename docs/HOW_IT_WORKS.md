@@ -158,6 +158,19 @@ Java has no notion of a `lib` folder: the JVM loads classes only from what is li
 It records exactly that in a `LaunchRecord`, whose `describe()` writes the account shown in the
 *Launch Classpath* tab, including a command for running the program without the editor.
 
+## Memory of the running program (the JVM Info tab)
+
+The figures come from three places, all read by `JvmInfo` (compiler module, package `run`):
+
+| Figure | Source |
+| --- | --- |
+| RAM installed and free, OS, architecture | The JDK's `OperatingSystemMXBean` and system properties, read in the editor (same machine). |
+| Maximum and initial heap, garbage collector | The selected runtime itself: `java -XX:+PrintFlagsFinal -version`, parsed for `MaxHeapSize` and `InitialHeapSize`. Asked once per runtime. |
+| Heap used and taken from the OS, live | The launched program's own JVM. The editor attaches to the process with the JDK's Attach API, starts its management agent, and reads `MemoryMXBean` over JMX once a second. This is what JConsole does. |
+
+Nothing is added to the program or its command line for this. A watcher thread in
+`RunController` does the reading, so the launch and the Console are not slowed down.
+
 ## Error handling and the error log
 
 - Code in all modules reports problems through the JDK's built-in logging facade

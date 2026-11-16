@@ -33,6 +33,9 @@ middle, and live compile-error checking as you type.
 - **Launch Classpath** — a tab next to the Console that spells out the last Run: the main class,
   the Java used, every classpath entry and why it is there, the exact command, and how to run
   the same program yourself from a terminal.
+- **JVM Info** — a tab next to Launch Classpath with the memory of the running program: the
+  machine's RAM, the heap reserved for the program (maximum and initial), the heap actually in
+  use (updated every second), and the operating system.
 - **Reformat code** — Option+Cmd+L (Ctrl+Alt+L on Windows/Linux) reformats the file, or the
   selection, to the standard Java code conventions.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
