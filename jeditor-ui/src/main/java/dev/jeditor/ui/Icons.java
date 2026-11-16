@@ -44,6 +44,11 @@ final class Icons {
         };
     }
 
+    /** A small rounded badge with a letter, for kinds of things that have no icon of their own. */
+    static Icon badge(String letter, Color color, boolean round) {
+        return new Badge(color, letter, round);
+    }
+
     /** Green "play" triangle. */
     static Icon run() {
         return new Base() {

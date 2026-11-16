@@ -54,7 +54,7 @@ public final class BuildPlanner {
      */
     public static BuildTarget forFile(Path file, String source, Path projectFolder) {
         Path absolute = file.toAbsolutePath().normalize();
-        ProjectLayout layout = ProjectLayout.detect(absolute, source);
+        ProjectLayout layout = ProjectLayout.detect(absolute, source, projectFolder);
         Path module = mavenModuleOf(absolute);
         Path output;
         if (module != null) {
@@ -90,7 +90,7 @@ public final class BuildPlanner {
                 Path main = module.resolve("src/main/java");
                 List<Path> sources = Files.isDirectory(main) ? javaFilesUnder(main, false) : List.of();
                 if (!sources.isEmpty()) {
-                    ProjectLayout layout = ProjectLayout.detect(sources.get(0), Files.readString(sources.get(0)));
+                    ProjectLayout layout = ProjectLayout.detect(sources.get(0), Files.readString(sources.get(0)), root);
                     targets.add(new BuildTarget(module.getFileName().toString(), sources, layout,
                             module.resolve("target/classes"), true));
                 }
@@ -100,22 +100,11 @@ public final class BuildPlanner {
         List<Path> sources = javaFilesUnder(root, true);
         if (!sources.isEmpty()) {
             // Every source is passed explicitly, so no source path is needed; only libraries matter.
-            ProjectLayout detected = ProjectLayout.detect(sources.get(0), Files.readString(sources.get(0)));
-            ProjectLayout layout = new ProjectLayout(List.of(), jarsIn(root.resolve("lib"), detected.classpath()));
+            ProjectLayout detected = ProjectLayout.detect(sources.get(0), Files.readString(sources.get(0)), root);
+            ProjectLayout layout = new ProjectLayout(List.of(), detected.classpath());
             targets.add(new BuildTarget(root.getFileName().toString(), sources, layout, root.resolve("out"), true));
         }
         return targets;
-    }
-
-    private static List<Path> jarsIn(Path lib, List<Path> detected) throws IOException {
-        List<Path> jars = new ArrayList<>(detected);
-        if (Files.isDirectory(lib)) {
-            try (Stream<Path> files = Files.list(lib)) {
-                files.filter(f -> f.getFileName().toString().endsWith(".jar")).sorted()
-                        .filter(jar -> !jars.contains(jar)).forEach(jars::add);
-            }
-        }
-        return jars;
     }
 
     private static List<Path> javaFilesUnder(Path directory, boolean skipOutputDirectories) throws IOException {

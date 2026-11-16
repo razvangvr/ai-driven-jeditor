@@ -28,7 +28,8 @@
 - **Finding other classes:** classes in the same source tree are found from the file's
   `package` declaration. In a Maven project, `src/main/java`, `src/test/java` and
   `target/classes` of the module and its sibling modules are used, plus jars in
-  `target/dependency` or `lib`.
+  `target/dependency`. In any project, JARs in the `lib` (or `libs`) folder of the opened folder
+  are used too; see [spec 14](14-classpath-inspector.md).
 
 ## Not covered
 

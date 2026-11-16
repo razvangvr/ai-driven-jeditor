@@ -131,6 +131,20 @@ Run ▶ ─▶ save ─▶ ProgramBuilder (javac, --release N) ─▶ temp dir o
    as a separate process, in the opened folder. `RunController` streams its output into the
    **Console** tab; the *Input* field feeds its standard input; *Stop* kills it.
 
+## The classpath, and the Classpath Inspector
+
+`ProjectLayout.detect` is the single place that decides what a file is compiled and run against:
+the source folders, Maven output folders, JARs in `target/dependency`, and JARs in the `lib` (or
+`libs`) folder of the Maven module and of the opened folder. Error checking, go-to-declaration,
+Build and Run all call it.
+
+`ClasspathInspector` calls the same method and then describes the result: for each JAR it opens
+the file with the JDK's `java.util.jar` and reads the Maven metadata, the manifest, and the list
+of entries (for the class count and packages). `ClasspathPanel` shows the report as a tree.
+
+*Add JAR…* is a file copy into the library folder followed by a re-check of the open files; there
+is no separate list of libraries to keep in sync.
+
 ## Error handling and the error log
 
 - Code in all modules reports problems through the JDK's built-in logging facade

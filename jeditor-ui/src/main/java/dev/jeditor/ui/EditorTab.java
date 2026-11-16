@@ -4,6 +4,7 @@ import dev.jeditor.compiler.AnalysisResult;
 import dev.jeditor.compiler.CompilationDiagnostic;
 import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
+import dev.jeditor.compiler.ProjectLayout;
 import dev.jeditor.format.JavaFormatter;
 import org.fife.ui.rsyntaxtextarea.ErrorStrip;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
@@ -41,6 +42,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -60,6 +62,7 @@ final class EditorTab extends JPanel {
     private final JavaSourceAnalyzer analyzer;
     private final ExecutorService executor;
     private final Consumer<Optional<DeclarationTarget>> navigator;
+    private final Supplier<Path> projectFolder;
 
     private final RSyntaxTextArea textArea = new RSyntaxTextArea();
     private final RTextScrollPane scrollPane = new RTextScrollPane(textArea);
@@ -75,12 +78,15 @@ final class EditorTab extends JPanel {
     private AnalysisResult result = AnalysisResult.EMPTY;
 
     /**
-     * @param navigator receives, on the event thread, the outcome of each "go to declaration"
-     *                  request: the declaration found, or empty if the spot refers to nothing
+     * @param navigator     receives, on the event thread, the outcome of each "go to declaration"
+     *                      request: the declaration found, or empty if the spot refers to nothing
+     * @param projectFolder gives the folder open in the editor (or null), whose library folders
+     *                      are part of the classpath the file is checked against
      */
     EditorTab(Path file, JavaSourceAnalyzer analyzer, ExecutorService executor,
-              Consumer<Optional<DeclarationTarget>> navigator) throws IOException {
+              Consumer<Optional<DeclarationTarget>> navigator, Supplier<Path> projectFolder) throws IOException {
         super(new BorderLayout());
+        this.projectFolder = projectFolder;
         this.file = file;
         this.analyzer = analyzer;
         this.executor = executor;
@@ -200,10 +206,11 @@ final class EditorTab extends JPanel {
             return;
         }
         String text = textArea.getText();
+        Path folder = projectFolder.get();
         executor.execute(() -> {
             Optional<DeclarationTarget> target;
             try {
-                target = analyzer.findDeclaration(file, text, offset);
+                target = analyzer.findDeclaration(file, text, offset, ProjectLayout.detect(file, text, folder));
             } catch (RuntimeException | Error e) {
                 LOG.log(System.Logger.Level.ERROR, "Go to declaration failed in " + file, e);
                 target = Optional.empty();
@@ -360,6 +367,20 @@ final class EditorTab extends JPanel {
         }
     }
 
+    /** The text as it currently stands in the editor, saved or not. */
+    String text() {
+        return textArea.getText();
+    }
+
+    /** Checks the file again now, e.g. because the classpath changed underneath it. */
+    void reanalyze() {
+        if (isJava() && analyzer.isAvailable()) {
+            analysisPending = true;
+            runAnalysis();
+            fireChanged();
+        }
+    }
+
     void focusEditor() {
         textArea.requestFocusInWindow();
     }
@@ -470,11 +491,12 @@ final class EditorTab extends JPanel {
         }
         long requested = ++generation;
         String text = textArea.getText();
+        Path folder = projectFolder.get();
         // execute(), not submit(): submit() parks anything thrown in a Future nobody reads.
         executor.execute(() -> {
             AnalysisResult fresh;
             try {
-                fresh = analyzer.analyze(file, text);
+                fresh = analyzer.analyze(file, text, ProjectLayout.detect(file, text, folder));
             } catch (RuntimeException | Error e) {
                 // Also Errors (a compiler stack overflow on deeply nested code, a linkage problem):
                 // otherwise the Problems view would say "compiling..." for ever.

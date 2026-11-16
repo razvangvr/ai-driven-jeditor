@@ -33,11 +33,25 @@ public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
      *   <li>the source root implied by the file's {@code package} declaration, so sibling classes resolve;</li>
      *   <li>for Maven projects (nearest {@code pom.xml}), {@code src/main/java} and {@code target/classes} of
      *       the module and of the other modules of the same multi-module build, the module's own test
-     *       sources/classes, and any jars in {@code target/dependency} or {@code lib}.</li>
+     *       sources/classes, and any jars in {@code target/dependency}, {@code lib} or {@code libs}.</li>
      * </ul>
      * Only existing locations are returned.
      */
     public static ProjectLayout detect(Path file, String source) {
+        return detect(file, source, null);
+    }
+
+    /** Names a folder of library JARs may have; JARs in it are put on the classpath. */
+    public static final List<String> LIBRARY_FOLDER_NAMES = List.of("lib", "libs");
+
+    /**
+     * Like {@link #detect(Path, String)}, also taking the JARs in the library folders
+     * ({@code lib} or {@code libs}) of the opened folder, which is the only way a plain,
+     * non-Maven folder gets libraries.
+     *
+     * @param projectFolder the folder opened in the editor; may be null
+     */
+    public static ProjectLayout detect(Path file, String source, Path projectFolder) {
         Path absolute = file.toAbsolutePath().normalize();
         Set<Path> sources = new LinkedHashSet<>();
         Set<Path> classes = new LinkedHashSet<>();
@@ -59,7 +73,34 @@ public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
                 addModule(child, false, sources, classes);
             }
         }
+        for (Path libraries : libraryFolders(absolute, projectFolder)) {
+            addJars(classes, libraries);
+        }
         return new ProjectLayout(new ArrayList<>(sources), new ArrayList<>(classes));
+    }
+
+    /**
+     * The folders whose JARs are put on the classpath of {@code file}, whether or not they exist
+     * yet, most specific first: {@code lib} and {@code libs} of the file's Maven module (if it is
+     * in one) and of the opened folder.
+     *
+     * @param file          a source file; may be null to ask about the opened folder alone
+     * @param projectFolder the folder opened in the editor; may be null
+     */
+    public static List<Path> libraryFolders(Path file, Path projectFolder) {
+        Set<Path> folders = new LinkedHashSet<>();
+        Path module = file == null ? null : nearestMavenModule(file.toAbsolutePath().normalize());
+        for (Path base : new Path[] {module, projectFolder == null ? null : projectFolder.toAbsolutePath().normalize()}) {
+            if (base != null) {
+                LIBRARY_FOLDER_NAMES.forEach(name -> folders.add(base.resolve(name)));
+            }
+        }
+        return new ArrayList<>(folders);
+    }
+
+    /** The Maven module (nearest folder with a {@code pom.xml}) a file belongs to, if any. */
+    public static Optional<Path> mavenModuleOf(Path file) {
+        return Optional.ofNullable(nearestMavenModule(file.toAbsolutePath().normalize()));
     }
 
     /**
@@ -115,7 +156,7 @@ public record ProjectLayout(List<Path> sourceRoots, List<Path> classpath) {
             addIfDirectory(classes, module.resolve("target/test-classes"));
         }
         addJars(classes, module.resolve("target/dependency"));
-        addJars(classes, module.resolve("lib"));
+        LIBRARY_FOLDER_NAMES.forEach(name -> addJars(classes, module.resolve(name)));
     }
 
     private static void addIfDirectory(Set<Path> target, Path dir) {

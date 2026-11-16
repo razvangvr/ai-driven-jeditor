@@ -5,6 +5,7 @@ import dev.jeditor.compiler.CodeBlock;
 import dev.jeditor.compiler.DeclarationTarget;
 import dev.jeditor.compiler.JavaSourceAnalyzer;
 import dev.jeditor.compiler.JavaTypeTemplate;
+import dev.jeditor.compiler.run.ClasspathInspector;
 import dev.jeditor.compiler.run.JavaRuntime;
 import dev.jeditor.compiler.run.RuntimeRegistry;
 import dev.jeditor.format.JavaFormatter;
@@ -83,6 +84,11 @@ final class MainFrame extends JFrame {
     private final JTabbedPane tabs = new JTabbedPane();
     private final StructurePanel structure = new StructurePanel(block -> withCurrentTab(tab -> tab.goTo(block.startOffset())));
     private final ProblemsPanel problems = new ProblemsPanel(d -> withCurrentTab(tab -> tab.goTo(d.startOffset())));
+    private final ClasspathPanel classpath = new ClasspathPanel(this::addJar, this::refreshClasspath);
+    /** Identifies the newest classpath report asked for; older ones still being computed are dropped. */
+    private long classpathRequest;
+    /** What the classpath report on screen was computed for; a change means it is out of date. */
+    private Object classpathShownFor;
     private final JLabel statusLeft = new JLabel(" ");
     private final JLabel statusRight = new JLabel(" ");
 
@@ -143,7 +149,10 @@ final class MainFrame extends JFrame {
             }
         });
 
-        JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, fileTree, structure);
+        JTabbedPane leftTabs = new JTabbedPane();
+        leftTabs.addTab("Structure", structure);
+        leftTabs.addTab("Classpath Inspector", classpath);
+        JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, fileTree, leftTabs);
         left.setResizeWeight(0.6);
         left.setBorder(null);
         bottomTabs.addTab("Problems", problems);
@@ -271,6 +280,7 @@ final class MainFrame extends JFrame {
         if (!busy && buildRunning) {
             buildRunning = false;
             fileTree.refresh(); // show the freshly written output directory
+            refreshClasspath(); // a Maven build's target/classes may just have appeared
         }
     }
 
@@ -338,7 +348,7 @@ final class MainFrame extends JFrame {
             return;
         }
         bottomTabs.setSelectedComponent(console);
-        runner.run(tab.file(), folder != null ? folder : tab.file().getParent(), runtimes.selected().get());
+        runner.run(tab.file(), folder != null ? folder : tab.file().getParent(), folder, runtimes.selected().get());
     }
 
     // ---- opening ------------------------------------------------------------------------------
@@ -349,6 +359,12 @@ final class MainFrame extends JFrame {
         fileTree.setRoot(newFolder);
         setTitle("JEditor — " + newFolder);
         closeFolderAction.setEnabled(true);
+        // The opened folder decides which library folders apply, so files already open have to be
+        // checked again against the new classpath.
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            tabAt(i).reanalyze();
+        }
+        refreshClasspath();
     }
 
     /**
@@ -365,6 +381,7 @@ final class MainFrame extends JFrame {
         fileTree.clear();
         setTitle("JEditor");
         closeFolderAction.setEnabled(false);
+        refreshClasspath();
     }
 
     /** Opens the file in a tab, or selects its tab if already open. Returns null if it could not be opened. */
@@ -381,7 +398,7 @@ final class MainFrame extends JFrame {
                 error("File is too large to open (over 5 MB):\n" + normalized);
                 return null;
             }
-            EditorTab tab = new EditorTab(normalized, analyzer, compilerThread, this::navigateTo);
+            EditorTab tab = new EditorTab(normalized, analyzer, compilerThread, this::navigateTo, () -> folder);
             tab.addChangeListener(() -> tabChanged(tab));
             tabs.addTab(null, null, tab, normalized.toString());
             int index = tabs.indexOfComponent(tab);
@@ -439,7 +456,10 @@ final class MainFrame extends JFrame {
         file.add(action("Save All", KeyStroke.getKeyStroke(KeyEvent.VK_S, menuKey | InputEvent.SHIFT_DOWN_MASK), this::saveAll));
         file.add(action("Close Tab", KeyStroke.getKeyStroke(KeyEvent.VK_W, menuKey), () -> withCurrentTab(this::close)));
         file.addSeparator();
-        file.add(action("Refresh File Tree", KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), fileTree::refresh));
+        file.add(action("Refresh File Tree", KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), () -> {
+            fileTree.refresh();
+            classpathChanged(); // JARs may have been added or removed outside the editor
+        }));
         file.addSeparator();
         file.add(action("Exit", null, this::exit));
 
@@ -1039,7 +1059,97 @@ final class MainFrame extends JFrame {
         }
     }
 
+    // ---- classpath inspector ------------------------------------------------------------------
+
+    /** Recomputes the Classpath Inspector for the current tab (or the opened folder), off the event thread. */
+    private void refreshClasspath() {
+        EditorTab tab = currentTab();
+        Path file = tab != null && tab.isJava() ? tab.file() : null;
+        Path projectFolder = folder;
+        classpathShownFor = classpathKey(tab);
+        long request = ++classpathRequest;
+        if (file == null && projectFolder == null) {
+            classpath.showMessage("Open a folder or a Java file to see its classpath.");
+            return;
+        }
+        String text = file == null ? null : tab.text();
+        List<String> mainClasses = file == null ? List.of() : tab.result().mainClasses();
+        JavaRuntime runtime = runtimes.selected().orElse(null);
+        compilerThread.execute(() -> {
+            ClasspathInspector.Report report;
+            try {
+                report = ClasspathInspector.inspect(file, text, projectFolder, mainClasses);
+            } catch (RuntimeException | Error e) {
+                LOG.log(System.Logger.Level.ERROR, "Cannot inspect the classpath of " + (file != null ? file : projectFolder), e);
+                SwingUtilities.invokeLater(() -> classpath.showMessage("The classpath could not be read; see Help \u2192 Open Error Log."));
+                return;
+            }
+            SwingUtilities.invokeLater(() -> {
+                if (request == classpathRequest) {
+                    classpath.show(report, runtime, projectFolder);
+                }
+            });
+        });
+    }
+
+    /** Changes when the classpath report on screen no longer matches the current tab: another file, folder or main class. */
+    private Object classpathKey(EditorTab tab) {
+        boolean javaTab = tab != null && tab.isJava();
+        return java.util.Arrays.asList(javaTab ? tab.file() : null, folder, javaTab ? tab.result().mainClasses() : List.of());
+    }
+
+    private void refreshClasspathIfStale() {
+        if (!classpathKey(currentTab()).equals(classpathShownFor)) {
+            refreshClasspath();
+        }
+    }
+
+    /** Copies JARs the user picks into the library folder, which puts them on the classpath at once. */
+    private void addJar() {
+        EditorTab tab = currentTab();
+        Optional<Path> target = ClasspathInspector.folderForNewJars(tab != null && tab.isJava() ? tab.file() : null, folder);
+        if (target.isEmpty()) {
+            error("Open a folder first (File \u2192 Open Folder\u2026); its 'lib' folder is where JARs go.");
+            return;
+        }
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Add JAR to " + target.get());
+        chooser.setMultiSelectionEnabled(true);
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("JAR files (*.jar)", "jar"));
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        int added = 0;
+        for (java.io.File jar : chooser.getSelectedFiles()) {
+            try {
+                Files.createDirectories(target.get());
+                if (!jar.toPath().toAbsolutePath().normalize().getParent().equals(target.get())) {
+                    FileOperations.copyInto(jar.toPath(), target.get());
+                }
+                added++;
+            } catch (IllegalArgumentException e) {
+                error(e.getMessage());
+            } catch (IOException e) {
+                error("Cannot add '" + jar.getName() + "':", e);
+            }
+        }
+        if (added > 0) {
+            classpathChanged();
+            showStatusMessage("Added " + added + (added == 1 ? " JAR" : " JARs") + " to " + target.get() + ".");
+        }
+    }
+
+    /** The files on the classpath changed: show them, and check every open file against the new classpath. */
+    private void classpathChanged() {
+        fileTree.refresh();
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            tabAt(i).reanalyze();
+        }
+        refreshClasspath();
+    }
+
     private void refreshViews() {
+        refreshClasspathIfStale();
         EditorTab tab = currentTab();
         if (tab == null) {
             structure.show(List.of());

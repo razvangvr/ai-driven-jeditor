@@ -17,6 +17,7 @@ The requirements for JEditor, as stated by the project owner, grouped by area.
 | [11](11-reformat-code.md) | Reformat code |
 | [12](12-drag-and-drop.md) | Drag and drop in the file viewer |
 | [13](13-error-handling-and-logging.md) | Error handling and the error log |
+| [14](14-classpath-inspector.md) | Classpath Inspector |
 
 ## How to read these
 

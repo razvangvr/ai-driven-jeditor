@@ -27,6 +27,9 @@ middle, and live compile-error checking as you type.
   drag a file or folder onto a folder to move it.
 - **Editing basics** — Find (Ctrl+F) and Replace (Ctrl+R) in the current file, Go to Line
   (Ctrl+G), and an Edit menu with undo/redo and clipboard commands.
+- **Classpath Inspector** — a tab next to Structure showing what the current program is compiled
+  and run against: every classpath entry in search order, each JAR's library, version, size and
+  packages, and the `lib` folder that JARs are picked up from. *Add JAR…* copies a library in.
 - **Reformat code** — Option+Cmd+L (Ctrl+Alt+L on Windows/Linux) reformats the file, or the
   selection, to the standard Java code conventions.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;
@@ -105,6 +108,9 @@ Uses [RSyntaxTextArea](https://github.com/bobbylight/RSyntaxTextArea) for the te
 feel. Both are pure Java.
 
 ## Third-party libraries in edited projects
+
+Put the JARs in a `lib` folder inside the folder you open (or use *Add JAR…* in the Classpath
+Inspector); they are picked up for error checking, Build and Run.
 
 Maven dependencies are not resolved automatically. To let the editor see a project's libraries
 (otherwise their imports are reported as errors), copy them once into `target/dependency`:

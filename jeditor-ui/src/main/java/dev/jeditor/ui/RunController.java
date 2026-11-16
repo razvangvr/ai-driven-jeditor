@@ -62,8 +62,8 @@ final class RunController {
     }
 
     /** Builds and runs the (saved) file. Must be called on the event thread; returns immediately. */
-    void run(Path file, Path workingDirectory, JavaRuntime runtime) {
-        start("run " + file.getFileName(), () -> buildAndRun(file, workingDirectory, runtime));
+    void run(Path file, Path workingDirectory, Path projectFolder, JavaRuntime runtime) {
+        start("run " + file.getFileName(), () -> buildAndRun(file, workingDirectory, projectFolder, runtime));
     }
 
     /**
@@ -145,7 +145,8 @@ final class RunController {
         }
     }
 
-    private void buildAndRun(Path file, Path workingDirectory, JavaRuntime runtime) throws IOException, InterruptedException {
+    private void buildAndRun(Path file, Path workingDirectory, Path projectFolder, JavaRuntime runtime)
+            throws IOException, InterruptedException {
         String source = Files.readString(file);
         List<String> mainClasses = analyzer.analyze(file, source).mainClasses();
         if (mainClasses.isEmpty()) {
@@ -154,7 +155,7 @@ final class RunController {
             return;
         }
         String mainClass = mainClasses.get(0);
-        ProjectLayout layout = ProjectLayout.detect(file, source);
+        ProjectLayout layout = ProjectLayout.detect(file, source, projectFolder);
 
         Path classes = freshOutputDir();
         ProgramBuilder.BuildResult build = builder.build(file, layout, classes, runtime.featureVersion());
