@@ -94,7 +94,8 @@ final class MainFrame extends JFrame {
 
     private final RuntimeRegistry runtimes = RuntimeRegistry.forCurrentUser();
     private final ConsolePanel console = new ConsolePanel();
-    private final RunController runner = new RunController(console, analyzer, this::refreshRunActions);
+    private final LaunchPanel launchPanel = new LaunchPanel();
+    private final RunController runner = new RunController(console, analyzer, this::refreshRunActions, launchPanel::show);
     private final JTabbedPane bottomTabs = new JTabbedPane();
     private final JComboBox<JavaRuntime> runtimeChooser = new JComboBox<>();
     private final Action runAction = action("Run Main Class", KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK), this::runCurrentFile);
@@ -157,6 +158,7 @@ final class MainFrame extends JFrame {
         left.setBorder(null);
         bottomTabs.addTab("Problems", problems);
         bottomTabs.addTab("Console", console);
+        bottomTabs.addTab("Launch Classpath", launchPanel);
         JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tabs, bottomTabs);
         right.setResizeWeight(0.72);
         right.setBorder(null);

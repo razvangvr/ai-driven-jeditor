@@ -259,7 +259,7 @@ public final class ClasspathInspector {
     }
 
     /** Why a path is on the classpath, judged from where it sits. */
-    static String originOf(Path path) {
+    public static String originOf(Path path) {
         Path parent = path.getParent();
         String parentName = parent == null || parent.getFileName() == null ? "" : parent.getFileName().toString();
         String name = path.getFileName().toString();

@@ -30,6 +30,9 @@ middle, and live compile-error checking as you type.
 - **Classpath Inspector** — a tab next to Structure showing what the current program is compiled
   and run against: every classpath entry in search order, each JAR's library, version, size and
   packages, and the `lib` folder that JARs are picked up from. *Add JAR…* copies a library in.
+- **Launch Classpath** — a tab next to the Console that spells out the last Run: the main class,
+  the Java used, every classpath entry and why it is there, the exact command, and how to run
+  the same program yourself from a terminal.
 - **Reformat code** — Option+Cmd+L (Ctrl+Alt+L on Windows/Linux) reformats the file, or the
   selection, to the standard Java code conventions.
 - **Recent files** — Cmd+E (Ctrl+E on Windows/Linux) lists the 10 most recently used files;

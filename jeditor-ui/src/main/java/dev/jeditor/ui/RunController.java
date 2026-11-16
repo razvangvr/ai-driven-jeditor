@@ -5,6 +5,7 @@ import dev.jeditor.compiler.ProjectLayout;
 import dev.jeditor.compiler.run.BuildPlanner;
 import dev.jeditor.compiler.run.JavaLauncher;
 import dev.jeditor.compiler.run.JavaRuntime;
+import dev.jeditor.compiler.run.LaunchRecord;
 import dev.jeditor.compiler.run.ProgramBuilder;
 
 import javax.swing.SwingUtilities;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static dev.jeditor.ui.ConsolePanel.Style.ERROR;
@@ -45,11 +47,18 @@ final class RunController {
     private volatile Process process;
     private Path outputDir;
 
-    /** @param onStateChange called on the event thread whenever {@link #isBusy()} changes */
-    RunController(ConsolePanel console, JavaSourceAnalyzer analyzer, Runnable onStateChange) {
+    private final Consumer<LaunchRecord> onLaunch;
+
+    /**
+     * @param onStateChange called on the event thread whenever {@link #isBusy()} changes
+     * @param onLaunch      called on the event thread when a program is started, and again with the
+     *                      completed record when it ends
+     */
+    RunController(ConsolePanel console, JavaSourceAnalyzer analyzer, Runnable onStateChange, Consumer<LaunchRecord> onLaunch) {
         this.console = console;
         this.analyzer = analyzer;
         this.onStateChange = onStateChange;
+        this.onLaunch = onLaunch;
     }
 
     /** True from the moment a run or build is requested until it has finished. */
@@ -168,8 +177,14 @@ final class RunController {
         List<Path> classpath = new ArrayList<>();
         classpath.add(classes);
         classpath.addAll(layout.classpath());
-        console.append(INFO, runtime.javaExecutable() + " " + mainClass + "\n");
+        LaunchRecord launch = new LaunchRecord(file, mainClass, runtime, workingDirectory, projectFolder, classes, classpath,
+                JavaLauncher.command(runtime, classpath, mainClass, List.of()),
+                BuildPlanner.forFile(file, source, projectFolder).outputDir(), null, null);
+        // The whole command, not a summary: what is on -cp is exactly what the program can see.
+        console.append(INFO, launch.commandLine() + "\n");
+        SwingUtilities.invokeLater(() -> onLaunch.accept(launch));
 
+        long startedAt = System.nanoTime();
         Process started = JavaLauncher.start(runtime, classpath, mainClass, List.of(), workingDirectory);
         process = started;
         console.setProgramInput(started.getOutputStream());
@@ -182,7 +197,10 @@ final class RunController {
         } catch (IOException e) {
             // stream closed because the process was killed; the exit code below tells the story
         }
-        console.append(INFO, "\nProcess finished with exit code " + started.waitFor() + "\n");
+        int exitCode = started.waitFor();
+        LaunchRecord finished = launch.finished(exitCode, java.time.Duration.ofNanos(System.nanoTime() - startedAt));
+        SwingUtilities.invokeLater(() -> onLaunch.accept(finished));
+        console.append(INFO, "\nProcess finished with exit code " + exitCode + "\n");
     }
 
     /** An empty directory for class files, so classes of earlier runs can never leak into this one. */

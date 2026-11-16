@@ -145,6 +145,19 @@ of entries (for the class count and packages). `ClasspathPanel` shows the report
 *Add JAR…* is a file copy into the library folder followed by a re-check of the open files; there
 is no separate list of libraries to keep in sync.
 
+## How a Run gets its classpath (the Launch Classpath tab)
+
+Java has no notion of a `lib` folder: the JVM loads classes only from what is listed after
+`-cp`. When you press Run, `RunController`:
+
+1. compiles the file and what it uses into a temporary folder;
+2. builds the list `[temporary folder] + ProjectLayout.detect(...).classpath()`, the second part
+   being the Maven output folders and every JAR found in the library folders;
+3. starts `<runtime>/bin/java -cp <that list> <MainClass>`.
+
+It records exactly that in a `LaunchRecord`, whose `describe()` writes the account shown in the
+*Launch Classpath* tab, including a command for running the program without the editor.
+
 ## Error handling and the error log
 
 - Code in all modules reports problems through the JDK's built-in logging facade
