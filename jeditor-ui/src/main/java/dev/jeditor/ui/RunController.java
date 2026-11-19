@@ -104,6 +104,24 @@ final class RunController {
         });
     }
 
+    /** Deletes the folder's build output, like {@code mvn clean}. */
+    void clean(Path folder) {
+        start("clean " + folder.getFileName(), () -> {
+            List<Path> targets = BuildPlanner.cleanTargets(folder);
+            if (targets.isEmpty()) {
+                console.append(INFO, "Nothing to clean: " + folder + " has no build output ("
+                        + (Files.isRegularFile(folder.resolve("pom.xml")) ? "no target folder" : "no out folder") + ").\n");
+                return;
+            }
+            for (Path target : targets) {
+                console.append(INFO, "Deleting " + target + "\n");
+            }
+            BuildPlanner.CleanResult result = BuildPlanner.clean(targets);
+            console.append(INFO, String.format(java.util.Locale.ROOT, "%nClean finished: %d %s removed (%s).%n",
+                    result.files(), result.files() == 1 ? "file" : "files", ClasspathPanel.size(result.bytes())));
+        });
+    }
+
     private void build(List<BuildPlanner.BuildTarget> targets, int release) {
         long started = System.nanoTime();
         for (BuildPlanner.BuildTarget target : targets) {

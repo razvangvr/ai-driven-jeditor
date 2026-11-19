@@ -113,6 +113,7 @@ final class MainFrame extends JFrame {
     private final Action compileFileAction = action("Compile Current File",
             KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK),
             this::compileCurrentFile);
+    private final Action cleanAction = action("Clean", null, this::cleanProject);
     private final Action buildProjectAction = action("Build Project",
             KeyStroke.getKeyStroke(KeyEvent.VK_F9, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), this::buildProject);
     private boolean updatingRuntimeChooser;
@@ -253,6 +254,10 @@ final class MainFrame extends JFrame {
         bar.add(runtimeChooser);
         bar.addSeparator(new Dimension(6, 0));
         buildProjectAction.putValue(Action.SHORT_DESCRIPTION, "Compile all sources of the folder into its output directory");
+        cleanAction.putValue(Action.SHORT_DESCRIPTION, "Delete the build output (target/ or out/), like mvn clean");
+        JButton cleanButton = new JButton(cleanAction);
+        cleanButton.setFocusable(false);
+        bar.add(cleanButton);
         JButton buildButton = new JButton(buildProjectAction);
         buildButton.setText("Build");
         buildButton.setFocusable(false);
@@ -280,11 +285,13 @@ final class MainFrame extends JFrame {
         runAction.setEnabled(!busy);
         compileFileAction.setEnabled(!busy);
         buildProjectAction.setEnabled(!busy);
+        cleanAction.setEnabled(!busy);
         stopAction.setEnabled(busy);
         if (!busy && buildRunning) {
             buildRunning = false;
-            fileTree.refresh(); // show the freshly written output directory
-            refreshClasspath(); // a Maven build's target/classes may just have appeared
+            // Show the output folder that appeared or vanished. In a Maven project target/classes is
+            // on the classpath, so open files are checked again and the inspector re-read.
+            classpathChanged();
         }
     }
 
@@ -329,6 +336,17 @@ final class MainFrame extends JFrame {
             buildRunning = true;
             runner.buildProject(folder, buildRelease());
         }
+    }
+
+    /** Deletes the build output of the opened folder (target/ or out/), like {@code mvn clean}. */
+    private void cleanProject() {
+        if (folder == null) {
+            error("Open a folder first (File \u2192 Open Folder\u2026).");
+            return;
+        }
+        bottomTabs.setSelectedComponent(console);
+        buildRunning = true;
+        runner.clean(folder);
     }
 
     private void manageRuntimes() {
@@ -492,6 +510,8 @@ final class MainFrame extends JFrame {
         build.setMnemonic('B');
         build.add(compileFileAction);
         build.add(buildProjectAction);
+        build.addSeparator();
+        build.add(cleanAction);
 
         JMenu run = new JMenu("Run");
         run.setMnemonic('R');

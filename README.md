@@ -45,7 +45,8 @@ middle, and live compile-error checking as you type.
   a new tab. Works for methods, fields and variables too.
 - **Build** — *Build → Build Project* (Ctrl+F9, or the Build button) compiles all sources into the
   output directory; *Compile Current File* (Ctrl+Shift+F9) compiles just the open file. Output
-  goes to `target/classes` in a Maven project, otherwise to `out/` in the folder.
+  goes to `target/classes` in a Maven project, otherwise to `out/` in the folder. *Clean* (toolbar,
+  or *Build → Clean*) deletes that output, like `mvn clean`.
 - **Run** — the ▶ button (Shift+F10) compiles the current file and runs its `main` method on the
   Java runtime chosen in the toolbar; output appears in the **Console** tab, which also accepts
   input. Add any installed JRE or JDK (Java 8+) under *Run → Java Runtimes…*.

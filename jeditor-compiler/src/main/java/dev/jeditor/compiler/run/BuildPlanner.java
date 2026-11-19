@@ -107,6 +107,83 @@ public final class BuildPlanner {
         return targets;
     }
 
+    /**
+     * What a clean removes: the output directories a build of {@code folder} writes to, as far as
+     * they exist. Like {@code mvn clean}, this is the {@code target} folder of the project and of
+     * each direct child module in a Maven project, and {@code out} in a plain folder. Nothing
+     * else is ever listed, so sources cannot be caught by it.
+     */
+    public static List<Path> cleanTargets(Path folder) throws IOException {
+        Path root = folder.toAbsolutePath().normalize();
+        List<Path> targets = new ArrayList<>();
+        if (Files.isRegularFile(root.resolve("pom.xml"))) {
+            List<Path> modules = new ArrayList<>();
+            modules.add(root);
+            try (Stream<Path> children = Files.list(root)) {
+                children.filter(Files::isDirectory)
+                        .filter(child -> Files.isRegularFile(child.resolve("pom.xml")))
+                        .sorted()
+                        .forEach(modules::add);
+            }
+            for (Path module : modules) {
+                addIfRealDirectory(targets, module.resolve("target"));
+            }
+        } else {
+            addIfRealDirectory(targets, root.resolve("out"));
+        }
+        return targets;
+    }
+
+    /** What one clean removed. */
+    public record CleanResult(List<Path> removed, long files, long bytes) {
+        public CleanResult {
+            removed = List.copyOf(removed);
+        }
+    }
+
+    /**
+     * Deletes the given output directories and everything in them. Symbolic links inside are
+     * removed as links; what they point to is never touched.
+     *
+     * @throws IOException if something could not be deleted; whatever was deleted before stays deleted
+     */
+    public static CleanResult clean(List<Path> directories) throws IOException {
+        long[] totals = new long[2];
+        List<Path> removed = new ArrayList<>();
+        for (Path directory : directories) {
+            if (!Files.exists(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                continue;
+            }
+            Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                    totals[0]++;
+                    totals[1] += attributes.size();
+                    Files.delete(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException failure) throws IOException {
+                    if (failure != null) {
+                        throw failure;
+                    }
+                    Files.delete(dir);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            removed.add(directory);
+        }
+        return new CleanResult(removed, totals[0], totals[1]);
+    }
+
+    /** Output folders are only taken when they are real folders: a link named "target" could point anywhere. */
+    private static void addIfRealDirectory(List<Path> targets, Path directory) {
+        if (Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            targets.add(directory);
+        }
+    }
+
     private static List<Path> javaFilesUnder(Path directory, boolean skipOutputDirectories) throws IOException {
         List<Path> result = new ArrayList<>();
         Files.walkFileTree(directory, new SimpleFileVisitor<>() {
